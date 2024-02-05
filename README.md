@@ -9,7 +9,11 @@ I accept no responsibility if you lose progress as a result of using any of thes
 ## Hyrule Warriors: Age of Calamity
 Complete as regards editing materials collected and their quantities.
 Weapon editor is fully functional but more research is needed around EXP caps and default subvalues for seals.
-No work as begun on the character editor.
+No work has begun on the character editor.
+
+## Trials of Mana/Seiken Densetsu 3
+This is the oldest of the editors I have made and lacks some of the polish of later editors.
+Name editing should work for the English 2018 re-release, the 2000 Neill Corlett fan translation, and the original Japanese release. Labels for items and other in-game text should also match for the two English translations but would need someone capable of reading and inputting Japanese for the labels to be correct for that version.
 
 ## Notes
 Several of these files will contain a line similar to the following:

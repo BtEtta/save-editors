@@ -1,0 +1,2000 @@
+﻿<!doctype html>
+<html>
+	<head>
+		<title>Trials of Mana — Save Editor</title>
+		<style>
+body {
+	background-color: #222; color: #DDD;
+	font-family: sans-serif;
+}
+select, input {
+	background-color: #222;	color: #DDD;
+	border: 1px solid #DDD;
+}
+select[disabled], input[disabled] {
+	background-color: #666;
+}
+input[type="file"] { border: none; }
+header {
+	border: 1px dotted #DDD;
+	padding: 5px; margin: 5px;
+	font-size: 0.8em;
+	display: flex; flex-wrap: wrap;
+	align-items: center;
+	vertical-align: middle;
+}
+header > span#log {
+	display: inline-block;
+	padding-left: 50px;
+	flex: 1;
+}
+article { padding: 0; margin: 0; }
+article > div {
+	margin: 5px;
+	border: 1px dotted #DDD;
+	padding: 5px;
+	position: relative;
+}
+#editor { display: flex; flex-wrap: wrap; }
+#editor.global { flex-wrap: nowrap; }
+#editor > div {
+	margin: 0 2px;
+	flex: none;
+}
+#editor div > label,
+#editor div > span {
+	display: inline-block;
+	width: 100px;
+	margin-right: 5px;
+	position: relative;
+}
+#editor div > label.stringValue,
+#editor div > span.stringValue { width: 175px; }
+
+#editor div > label.smallValue,
+#editor div > span.smallValue { width: 50px; }
+
+#editor div > br + label,
+#editor div > label:nth-of-type(odd),
+#editor div > br + span,
+#editor div > span:nth-of-type(odd) {
+	text-align: right;
+	padding-right: 2px;
+}
+#editor div span { font-weight: bold; }
+#editor input,
+#editor select {
+	width: 100%;
+	display: inline-block;
+	padding: 1px 0 1px 3px;
+	margin: 0 0 3px 0;
+	box-sizing: content-box;
+}
+#editor option { padding: 0; }
+#editor optgroup { padding: 0; background-color: #DDD; color: #222; }
+#editor > div#storage {
+	flex: initial;
+	display: flex; flex-wrap: wrap;
+}
+#editor div > span.note {
+	font-size: 0.8em;
+	vertical-align: top;
+	z-index: 9999;
+}
+#editor div > span.note > span { display: none; }
+#editor div > span.note > span span.header { font-weight: bold; }
+#editor div > span.note:hover > span {
+	display: inline-block;
+	padding: 4px;
+	background-color: #FFA; color: #222;
+	border: 1px solid black;
+	position: absolute;
+	font-weight: normal;
+	min-width: 200px;
+	white-space: nowrap;
+}
+		</style>
+	</head>
+	<body>
+		<header>
+			<span>
+				<label>Choose file: <input type=file id=input></label>
+				<button type=button id=save disabled>Save Changes</button>
+			</span>
+			<span id=log>Trials of Mana Save Editor v0.9 BETA</span>
+			<span>
+				<label>ROM Language:
+					<select id=language size=1>
+						<option value=english selected>Trials of Mana — English</option>
+						<option value=fansub>Seiken Densetsu 3 — English Fansub</option>
+						<option value=japanese>Seiken Densetsu 3 — Japanese</option>
+					</select>
+				</label>
+			</span>
+		</header>
+		<article>
+			<div id=selector>
+				<label>Save slot:
+					<select id=slot size=1 disabled>
+						<option value=0x0000 selected>Slot 1</option>
+						<option value=0x0800>Slot 2</option>
+						<option value=0x1000>Slot 3</option>
+					</select>
+				</label>
+				<span>Character:</span><span>
+				<select id=character size=1 disabled>
+					<option value=0x0000 selected>Global</option>
+					<option value=0x0172>Character 1</option>
+					<option value=0x0271>Character 2</option>
+					<option value=0x0370>Character 3</option>
+				</select></span>
+			</div>
+			<div id=editor></div>
+		</article>
+		<script>
+
+/*
+The basic premise of reading binary data in JavaScript is that you load the file
+into an ArrayBuffer object. But you cannot directly manipulate an this ArrayBuffer.
+
+Instead you create ArrayBufferView objects that provide windows into sections of
+the ArrayBuffer. e.g. 'Uint8Array' and 'DataView'
+*/
+
+// Data Type IDs
+const uint8 = 1;
+const uint16 = 2;
+const uint32 = 3;
+const list = 4;
+const arrayIndexed = 5;
+const zeroBased8 = 6;
+const custom = 7;
+
+// Store references to a few HTML elements
+var input = document.querySelector('#input');
+var save = document.querySelector('#save');
+// Used to test data validation fails during development
+var log = document.querySelector('#log');
+var language = document.querySelector('#language');
+var slot = document.querySelector('#slot');
+var character = document.querySelector('#character');
+var editor = document.querySelector('#editor');
+
+var editorFields;
+
+var fileName='';
+
+// Various language specific JSON objects
+var formStrings;
+var days;
+var tech;
+var inventory;
+
+// Will contain the DataView for our ArrayBuffer
+var rawData;
+
+var saveOffset = 0x0000;
+var checksumOffset = 0x7FE;
+// Will only load character settings if non-zero
+var characterOffset = 0x0000;
+// Names are stored in two places
+// First displays on load/save screen
+// Second is used in game
+// Dummy first entry to align with character.selectedIndex
+var nameOffsets = [[0,0],[0x010,0x46D],[0x030,0x479],[0x050,0x485]];
+
+// All armour pieces are in a single data table
+var headgearStart = 0x01; headgearEnd = 0x48
+var accessoryStart = 0x49; accessoryEnd = 0x7E
+var armourStart = 0x7F; armourEnd = 0xF6;
+var shieldStart = 0xF7; shieldEnd = 0xFF;
+
+// Number of bytes used for checksum calculation
+// Length of a save, minus header bytes, minus checksum bytes
+var checksumBytes = ((0x800 - 0x70) - 0x2)
+
+// Everything for handling name saving/loading
+var validCharacters;
+var validCharactersRegex;
+var nameLength;
+var encoding;
+var fromEncoding;
+var toEncoding;
+
+// Constants for little-endian/big-endian while manipulating the DataView
+const LE = true, BE = false;
+
+// FIREFOX DOESN'T RESET FIELDS ON AN F5 RELOAD
+// RESET TO DEFAULTS HERE.
+input.value="";
+save.disabled = true;
+language.selectedIndex = 0;
+slot.disabled = true;
+slot.selectedIndex = 0;
+character.disabled = true;
+character.selectedIndex = 0;
+characterOffset = Number(character.value);
+editor.className = 'global';
+
+input.addEventListener('change', loadFile, false);
+save.addEventListener('click', saveFile, false);
+language.addEventListener('change', function() { if (fileName) createUI(); }, false);
+slot.addEventListener('change', function() {
+	// Set checksum when moving away from slot
+	// Only set if save button active (i.e. checksum previously valid
+	if (!save.disabled) {
+		setChecksum(rawData, saveOffset + checksumOffset);
+	}
+	saveOffset = Number(slot.value); parseFile(); 
+}, false);
+character.addEventListener('change', function() { characterOffset = Number(character.value); createUI(); }, false);
+
+// Capture and save changes to values
+editor.parentNode.addEventListener('input', valueChanged, true);
+
+// Called from a 'change' event on the file input
+function loadFile (e) {
+	var reader, file;
+
+	// Checks that a file was selected.
+	// Assumes if multiple files were selected we just want the first one.
+	// Note that the variable assignment as part of the condition is deliberate.
+	if ((e.target.files) && (file = e.target.files[0])) {
+
+		fileName = file.name;
+
+		// Create a FileReader and setup what happens when its loaded.
+		reader = new FileReader();
+		reader.onload = function (e) {
+			var contents = e.target.result;
+			var buffer = reader.result;
+			// Keep DataView as a global variable because it's the laziest way.
+			rawData = new DataView(buffer);
+			// Default to slot 1
+			saveOffset = 0x0000;
+			slot.selectedIndex = 0;
+
+			// Skip to the code to parse the file
+			parseFile(rawData);
+		}
+
+		// Tell the browser to load the file as an ArrayBuffer triggering the above event when loaded.
+		reader.readAsArrayBuffer(file);
+	}
+}
+
+function parseFile() {
+	if (rawData.buffer.byteLength == 8192) {
+		slot.disabled = false;
+		if (testChecksum()) {
+			save.disabled = false;
+			character.disabled = false;
+
+			createUI();
+		}
+		else {
+			save.disabled = true;
+			character.disabled = true;
+
+			editor.innerHTML = '<span>CHECKSUM PROBLEM — SLOT NOT LOADED</span>';
+			editor.firstChild.addEventListener('click', function() { setChecksum(rawData, saveOffset + checksumOffset); parseFile(); },false)
+		}
+	}
+	else {
+		save.disabled = true;
+		slot.disabled = true;
+		character.disabled = true;
+		editor.innerHTML = 'INCORRECT FILE SIZE — FILE NOT LOADED';
+	}
+}
+
+function saveFile() {
+	setChecksum(rawData, saveOffset + checksumOffset);
+
+	// File() contructor takes an array of ArrayBuffer (or similar) objects.
+	var fileOutput = new File([rawData], fileName, { type: "application/octet-stream",});
+	var fileURL = URL.createObjectURL(fileOutput);
+
+	// Should just be able to set: location = fileURL;
+	// But WebKit/Blink don't use specified file name in this instance. Firefox works.
+	// Workaround uses 'download' property of anchor elements.
+	// Support for 'download' is still new (as of 2017) in WebKit.
+	fileAnchor = document.createElement("a");
+	fileAnchor.style = "display: none";
+	fileAnchor.href = fileURL;
+	fileAnchor.download = fileName;
+
+	document.body.appendChild(fileAnchor);
+	fileAnchor.click();
+	document.body.removeChild(fileAnchor);
+
+	// No way to detect when blob: URL is no longer needed.
+	// On Edge, revokeObjectURL should be called only after
+	// a.click() has completed, atleast on EdgeHTML 15.15048
+	// Completely arbitrary timing used.
+	setTimeout(function() { URL.revokeObjectURL(fileURL);}, 1000);
+}
+
+function testChecksum() {
+	var checksum = calculateChecksum(new Uint8Array(rawData.buffer, saveOffset+0x70, checksumBytes));
+	var storedChecksum = rawData.getUint16(saveOffset + checksumOffset, LE);
+	return (checksum == storedChecksum);
+}
+
+function setChecksum(data, offset) {
+	data.setUint16(offset, calculateChecksum(new Uint8Array(rawData.buffer, saveOffset+0x70, checksumBytes)), LE)
+}
+
+function calculateChecksum(data) {
+	var i, value, sum = 0;
+
+	for(i = 0; i < checksumBytes; i++) {
+		sum = sum + data[i];
+	}
+
+	// Fix overflows
+	return sum % 65536;
+}
+
+function createUI() {
+	loadLanguage();
+	buildConversionTables();
+	editorFields = [];
+
+	var editorFragment = document.createDocumentFragment();
+	var storageDiv = document.createElement('div');
+	var pendingFields, pendingElement;
+	var i, j, k, workString1, workString2, workData1, workData2;
+
+	// Reset Editor
+	editor.innerHTML = '';
+
+	if (characterOffset == 0) {
+		editor.className = 'global';
+		/*** GLOBAL VALUES ***/
+		// Combine Money, time played, and Item Ring in one inline-block DIV
+		// Storage entries combined in one flex DIV
+
+		// Money
+		// Use class=stringValue for alignment with item ring entries
+		workString2 = '<div id=basic><span class=stringValue>' + formStrings.money + ':</span><span><input name=money type=number min=0 max=9999999></span><br>';
+
+		// Time played
+		// Some funky stuff happens here with trying to escape backslashes with '\\'
+		// Just avoid, it makes no sense. Use \x5C instead
+		// Restrict hours to 4 digits. Game can count up to nearly 20,000 hours played but handling edge cases would be fiddly.
+		workString2 += '<span class=stringValue>' + formStrings.played + ':</span><span><input name=played type=text pattern="[0-9]{1,4}:[0-9]{1,2}:[0-9]{1,2}\x5C.[0-5][0-9]"></span><br>';
+		workString2 += '<span class=stringValue></span><span class=note>' + formStrings.hover + '<span><span class=header>hours:minutes:seconds.frames</span><br>Played time is stored as frames elapsed at 60 FPS</span></span><br>';
+		
+		// Day
+		workString1 = '';
+		for (i = 0; workData1 = days.names[i]; i++) { workString1 += '<option value=0x' + i.toString(16) + '>' + workData1 + '</option>' }
+		workString2 += '<span class=stringValue>' + formStrings.day + ':</span><span><select name=day>' + workString1 + '</select></span><br>';
+
+		// Time
+		workString2 += '<span class=stringValue>' + formStrings.time + ':</span><span><input name=time type=text pattern="(?:0?[0-9]|1[0-5]):(?:0?[0-9]|1[0-9]|2[0-9]|3[0-1])"></span><br>';
+		workString2 += '<span class=stringValue></span><span class=note>' + formStrings.hover + '<span>' +
+		'<span class=header>hours:minutes</span><br>' +
+		'Hours range from 0-15, Minutes range from 0-31<br>' +
+		'Daytime begins at 5:00, Nighttime begins at 13:00<br>' +
+		'Dawn is between 4:00 and 6:00, Dusk is between 12:00 and 14:00<br>' +
+		'Inns will wake you at 6:00 in the morning or 14:00 in the evening<br>' +
+		'Days change at 0:00<br>' +
+		'</span></span><br>';
+
+		// Item Ring
+		workString1 = '';
+		for (i = 0; workData1 = inventory.items[i]; i++) { workString1 += '<option value=0x' + i.toString(16) + '>' + workData1 + '</option>' }
+		workString2 += '<div><span class=stringValue>' + formStrings.itemring + '</span><span>' + formStrings.quantity + '</span><br>';
+		for (i = 0; i < 10; i++) { workString2 += '<span class=stringValue><select name=itemRing'+(i+1)+'>' + workString1 + '</select></span><span><input type=number min=0 max=99></span><br>'; }
+		workString2 += '</div></div>';
+		
+		pendingFields = parseDOM(workString2);
+		pendingElement = pendingFields.querySelector('input[name="money"]'); pendingElement.offset = 0x491; pendingElement.dataType = uint32; // Money
+		editorFields.push(pendingElement);
+		pendingElement = pendingFields.querySelector('input[name="played"]'); pendingElement.offset = [0x06C,0x750]; pendingElement.dataType = custom; // Time Played
+		pendingElement._load = function() { this.value = parsePlayedTime(this, true); };
+		pendingElement._save = function() { parsePlayedTime(this, false); };
+		editorFields.push(pendingElement);
+		pendingElement = pendingFields.querySelector('select[name="day"]'); pendingElement.offset = 0x16A; pendingElement.dataType = list // Day
+		editorFields.push(pendingElement);
+		pendingElement = pendingFields.querySelector('input[name="time"]'); pendingElement.offset = 0x16B; pendingElement.dataType = custom; // Time
+		pendingElement._load = function() { this.value = parseGameTime(this, true); };
+		pendingElement._save = function() { parseGameTime(this, false); };
+		editorFields.push(pendingElement);
+		for (i = 0; i < 10; i++) {
+			pendingElement = pendingFields.querySelectorAll('select[name^="itemRing"]')[i]; pendingElement.offset = (0x756+i); pendingElement.dataType = list; // Item Ring Items
+			editorFields.push(pendingElement);
+			pendingElement = pendingFields.querySelectorAll('input[max="99"]')[i]; pendingElement.offset = (0x760+i); pendingElement.dataType = uint8; // Item Ring Quantities
+			editorFields.push(pendingElement);
+		}
+		editorFragment.appendChild(pendingFields);
+
+		storageDiv.id = "storage";
+		storageDiv.appendChild(parseDOM('<span style="width: 100%; text-align: center;">' + formStrings.storage + '</span>'));
+		// Item/Weapon/Armor Storage skip item 0 = (empty)
+		// Cap DIVs at 25 entries max
+		// Items
+		var wrapCounter, wrapSize = 15;
+		workData2 = [];
+		workString1 = '';
+		for (i = 1; workData1 = inventory.items[i]; i++) {
+			if ((i%wrapSize) == 1) workString1 += '<div><span class=stringValue>' + ((i==1)?formStrings.item:'') + '</span><br>';
+			workString1 += '<label class=stringValue>' + workData1 + ':</label><span class=smallValue><input type=number min=0 max=99></span><br>'
+			if ((i%wrapSize) == 0) workString1 += '</div>';
+			workData2.push(0x6A5+i);
+		}
+		if (!(workString1.endsWith('</div>'))) workString1 += '</div>';
+		pendingFields = parseDOM(workString1);
+		workData1 = pendingFields.querySelectorAll('input');
+		for (i = 0; pendingElement = workData1[i]; i++) {
+			pendingElement.offset = workData2[i]; pendingElement.dataType = uint8;
+			editorFields.push(pendingElement);
+		}
+		storageDiv.appendChild(pendingFields);
+		// Weapons
+		wrapCounter = 1;
+		workData2 = [];
+		workString1 = '';
+		for (i = 1; workData1 = inventory.weapons[i]; i++) {
+			if (workData1[1]) {
+				// The final weapon in the table (Giant's Spear/Gigas Spear) doesn't seem to be able to be saved in storage
+				// Check i+1 to end list parsing early.
+				if ((i+1) != inventory.weapons.length) { 
+					if ((wrapCounter%wrapSize) == 1) workString1 += '<div><span class=stringValue>' + ((wrapCounter==1)?formStrings.weapon:'') + '</span><br>';
+					workString1 += '<label class=stringValue>' + workData1[0] + ':</label><span class=smallValue><input type=number min=0 max=99></span><br>'
+					if ((wrapCounter%wrapSize) == 0) workString1 += '</div>';
+					workData2.push(0x4A5+i);
+					wrapCounter++
+				}
+				else {
+					workString1 += '<label class=stringValue></label><span class="note smallValue">' + formStrings.note + '<span>Due to a bug in the game the ' + workData1[0] + ' can\'t be saved in storage</span><br>'
+					if (!(workString1.endsWith('</div>'))) workString1 += '</div>';
+				}
+			}
+		}
+		pendingFields = parseDOM(workString1);
+		workData1 = pendingFields.querySelectorAll('input');
+		for (i = 0; pendingElement = workData1[i]; i++) {
+			pendingElement.offset = (workData2[i]);
+			pendingElement.dataType = uint8;
+			editorFields.push(pendingElement);
+		}
+		storageDiv.appendChild(pendingFields);
+		// Headgears
+		wrapCounter = 1;
+		workData2 = [];
+		workString1 = '';
+		for (i = headgearStart; workData1 = inventory.armour[i]; i++) {
+			if ((wrapCounter%wrapSize) == 1) workString1 += '<div><span class=stringValue>' + ((wrapCounter==1)?formStrings.headgear:'') + '</span><br>';
+			workString1 += '<label class=stringValue>' + workData1[0] + ':</label><span class=smallValue><input type=number min=0 max=99></span><br>'
+			if ((wrapCounter%wrapSize) == 0) workString1 += '</div>';
+			workData2.push(0x5A5+i);
+			wrapCounter++
+			if (i == headgearEnd) break;
+		}
+		if (!(workString1.endsWith('</div>'))) workString1 += '</div>';
+		pendingFields = parseDOM(workString1);
+		workData1 = pendingFields.querySelectorAll('input');
+		for (i = 0; pendingElement = workData1[i]; i++) {
+			pendingElement.offset = workData2[i]; pendingElement.dataType = uint8;
+			editorFields.push(pendingElement);
+		}
+		storageDiv.appendChild(pendingFields);
+		// Armours
+		wrapCounter = 1;
+		workData2 = [];
+		workString1 = '';
+		for (i = armourStart; workData1 = inventory.armour[i]; i++) {
+			if ((wrapCounter%wrapSize) == 1) workString1 += '<div><span class=stringValue>' + ((wrapCounter==1)?formStrings.armour:'') + '</span><br>';
+			workString1 += '<label class=stringValue>' + workData1[0] + ':</label><span class=smallValue><input type=number min=0 max=99></span><br>'
+			if ((wrapCounter%wrapSize) == 0) workString1 += '</div>';
+			workData2.push(0x5A5+i);
+			wrapCounter++
+			if (i == armourEnd) break;
+		}
+		if (!(workString1.endsWith('</div>'))) workString1 += '</div>';
+		pendingFields = parseDOM(workString1);
+		workData1 = pendingFields.querySelectorAll('input');
+		for (i = 0; pendingElement = workData1[i]; i++) {
+			pendingElement.offset = workData2[i]; pendingElement.dataType = uint8;
+			editorFields.push(pendingElement);
+		}
+		storageDiv.appendChild(pendingFields);
+		// Accessories
+		wrapCounter = 1;
+		workData2 = [];
+		workString1 = '';
+		for (i = accessoryStart; workData1 = inventory.armour[i]; i++) {
+			if ((wrapCounter%wrapSize) == 1) workString1 += '<div><span class=stringValue>' + ((wrapCounter==1)?formStrings.accessory:'') + '</span><br>';
+			workString1 += '<label class=stringValue>' + workData1[0] + ':</label><span class=smallValue><input type=number min=0 max=99></span><br>'
+			if ((wrapCounter%wrapSize) == 0) workString1 += '</div>';
+			workData2.push(0x5A5+i);
+			wrapCounter++
+			if (i == accessoryEnd) break;
+		}
+		if (!(workString1.endsWith('</div>'))) workString1 += '</div>';
+		pendingFields = parseDOM(workString1);
+		workData1 = pendingFields.querySelectorAll('input');
+		for (i = 0; pendingElement = workData1[i]; i++) {
+			pendingElement.offset = workData2[i]; pendingElement.dataType = uint8;
+			editorFields.push(pendingElement);
+		}
+		storageDiv.appendChild(pendingFields);
+		// Shields
+		wrapCounter = 1;
+		workData2 = [];
+		workString1 = '';
+		for (i = shieldStart; workData1 = inventory.armour[i]; i++) {
+			if ((i+1) != inventory.armour.length) { // The final shield in the table (Adamant Shield/Terralex Ward) doesn't seem to be able to be saved in storage
+				if ((wrapCounter%wrapSize) == 1) workString1 += '<div><span class=stringValue>' + ((wrapCounter==1)?formStrings.shield:'') + '</span><br>';
+				workString1 += '<label class=stringValue>' + workData1[0] + ':</label><span class=smallValue><input type=number min=0 max=99></span><br>'
+				if ((wrapCounter%wrapSize) == 0) workString1 += '</div>';
+				workData2.push(0x5A5+i);
+				wrapCounter++
+			}
+			if (i == shieldEnd) break;
+		}
+		if (!(workString1.endsWith('</div>'))) workString1 += '</div>';
+		pendingFields = parseDOM(workString1);
+		workData1 = pendingFields.querySelectorAll('input');
+		for (i = 0; pendingElement = workData1[i]; i++) {
+			pendingElement.offset = workData2[i]; pendingElement.dataType = uint8;
+			editorFields.push(pendingElement);
+		}
+		storageDiv.appendChild(pendingFields);
+		editorFragment.appendChild(storageDiv);
+	}
+	else {
+		editor.className = 'character';
+		/*** PER-CHARACTER VALUES ***/
+		// Name/Character/Level/Experience/Tech Gauge/Class
+		workString1 = '';
+		workData1 = 0;
+		workData2 = [formStrings.duran,formStrings.kevin,formStrings.hawkeye,formStrings.angela,formStrings.charlotte,formStrings.riesz];
+		for (i = 0; i < 6; i++) { for (j = 0; j < 3; j++) { for (k = 0; k < 4; k++) {
+			switch(j) {
+				case 0: if (k < 1) workString1 += '<optgroup label=' + workData2[i] + '><option value=' + i + j + k + '>' + tech.classes[workData1++] + '</option>'; break;
+				case 1: if (k < 2) workString1 += '<option value=' + i + j + k + '>' + tech.classes[workData1++] + '</option>'; break;
+				case 2: if (k < 4) workString1 += '<option value=' + i + j + k + '>' + tech.classes[workData1++] + '</option>'; break;
+			}
+		}} workString1 += '</optgroup>' };
+		workString2 = '<div><span>' + formStrings.character + ':</span><span class=stringValue><select>'
+		for (i = 0; i < 6; i++) { workString2 += '<option value=0x' + i + '>' + workData2[i] + '</option>' }
+		workString2 += '</select>\
+		</span><br>\
+		<span>' + formStrings.name + ':</span><span class=stringValue><input type=text minlength=1 maxlength=' + nameLength + ' spellcheck=false pattern="[' + validCharactersRegex + ']{1,' + nameLength + '}"></span><br>\
+		<span></span><span class="note stringValue">' + formStrings.hover + '<span><span class=header>' + formStrings.validChars + '</span><br>' + validCharacters + '</span></span><br>\
+		<span>' + formStrings.level + ':</span><span class=stringValue><input type=number min=1 max=99></span><br>\
+		<span>' + formStrings.tech + ':</span><span class=stringValue><input type=number min=1 max=9></span><br>\
+		<span>' + formStrings.class + ':</span><span class=stringValue><select>' + workString1 + '</select></span><br>\
+		<span>' + formStrings.exp + ':</span><span class=stringValue><input type=number min=0 max=99999999></span><br>\
+		<span>' + formStrings.next + ':</span><span class=stringValue><input type=number min=0 max=99999999 disabled></span><br>\
+		<span></span><span class="note stringValue">' + formStrings.hover + '<span><span class=header>' + formStrings.levelup + '</span><br>' + levelUpThresholds() + '</span></span><br>\
+		</div>';
+		pendingFields = parseDOM(workString2);
+		workData1 = pendingFields.querySelectorAll('input');
+		pendingElement = workData1[0];
+		pendingElement.offset = nameOffsets[character.selectedIndex]; pendingElement.dataType = custom; // Name (offsets are stored in global variable)
+		pendingElement._load = function() { this.value = parseName(this, true); };
+		pendingElement._save = function() { parseName(this, false); };
+		editorFields.push(pendingElement);
+		pendingElement = workData1[1];
+		pendingElement.offset = (characterOffset+0x018); pendingElement.dataType = zeroBased8; // Level
+		editorFields.push(pendingElement);
+		pendingElement = workData1[2];
+		pendingElement.offset = (characterOffset+0x013); pendingElement.dataType = uint8; // Tech Gauge
+		editorFields.push(pendingElement);
+		for (i = 0; pendingElement = workData1[i+3]; i++) {
+			// Next Level EXP 0xA bytes on from current experience
+			pendingElement.offset = (characterOffset+0x00A+((i)*0x00A)); pendingElement.dataType = custom; // Exp/Next Level
+			pendingElement._load = function() { this.value = calculateExp(this, true); };
+			pendingElement._save = function() { calculateExp(this, false); };
+			editorFields.push(pendingElement);
+		}
+		workData1 = pendingFields.querySelectorAll('select');
+		pendingElement = workData1[0];
+		pendingElement.offset = (0x160+(character.selectedIndex-1)); pendingElement.dataType = list; // Character
+		editorFields.push(pendingElement);
+		pendingElement = workData1[1];
+		pendingElement.offset = (characterOffset+0x01A); pendingElement.dataType = custom; // Class
+		pendingElement._load = function() { this.selectedIndex = calculateClass(this, true); };
+		pendingElement._save = function() { calculateClass(this, false); };
+		editorFields.push(pendingElement);
+		editorFragment.appendChild(pendingFields);
+
+		// HP/MP
+		workString1 = '<div>\
+		<span>' + formStrings.hp + ':</span><span class=smallValue><input type=number min=1 max=999></span><br>\
+		<span>' + formStrings.hpmax + ':</span><span class=smallValue><input type=number min=1 max=999></span><br>\
+		<span>' + formStrings.mp + ':</span><span class=smallValue><input type=number min=1 max=999></span><br>\
+		<span>' + formStrings.mpmax + ':</span><span class=smallValue><input type=number min=1 max=999></span><br>\
+		</div>';
+		pendingFields = parseDOM(workString1);
+		workData1 = pendingFields.querySelectorAll('input');
+		for (i = 0; pendingElement = workData1[i]; i++) {
+			switch(i) {
+				case 0: pendingElement.offset = (characterOffset+0x000); break; //HP
+				case 1: pendingElement.offset = (characterOffset+0x08B); break; //HP Max
+				case 2: pendingElement.offset = (characterOffset+0x002); break; //MP
+				case 3: pendingElement.offset = (characterOffset+0x08D); break; //MP Max
+			}
+			pendingElement.dataType = uint16;
+			editorFields.push(pendingElement);
+		}
+		editorFragment.appendChild(pendingFields);
+
+		// Stats
+		workString1 = '<div>\
+		<span>' + formStrings.str + ':</span><span class=smallValue><input type=number min=0 max=99></span><br>\
+		<span>' + formStrings.dex + ':</span><span class=smallValue><input type=number min=0 max=99></span><br>\
+		<span>' + formStrings.sta + ':</span><span class=smallValue><input type=number min=0 max=99></span><br>\
+		<span>' + formStrings.int + ':</span><span class=smallValue><input type=number min=0 max=99></span><br>\
+		<span>' + formStrings.spirit + ':</span><span class=smallValue><input type=number min=0 max=99></span><br>\
+		<span>' + formStrings.luck + ':</span><span class=smallValue><input type=number min=0 max=99></span><br>\
+		</div>';
+		pendingFields = parseDOM(workString1);
+		workData1 = pendingFields.querySelectorAll('input');
+		for (i = 0; pendingElement = workData1[i]; i++) {
+			pendingElement.offset = (characterOffset+0x004+i); pendingElement.dataType = uint8;
+			editorFields.push(pendingElement);
+		}
+		editorFragment.appendChild(pendingFields);
+
+		// Status
+		// Evade uint8, Other stats uint16
+		workString1 = '<div>\
+		<span>' + formStrings.atk + ':</span><span class=smallValue><input type=number min=0 max=999></span><br>\
+		<span>' + formStrings.def + ':</span><span class=smallValue><input type=number min=0 max=999></span><br>\
+		<span>' + formStrings.evade + ':</span><span class=smallValue><input type=number min=0 max=99></span><br>\
+		<span>' + formStrings.magicdef + ':</span><span class=smallValue><input type=number min=0 max=999></span><br>\
+		</div>';
+		pendingFields = parseDOM(workString1);
+		workData1 = pendingFields.querySelectorAll('input');
+		for (i = 0; pendingElement = workData1[i]; i++) {
+			switch(i) {
+				case 0: pendingElement.offset = (characterOffset+0x035); pendingElement.dataType = uint16; break; //Attack
+				case 1: pendingElement.offset = (characterOffset+0x03D); pendingElement.dataType = uint16; break; //Defence
+				case 2: pendingElement.offset = (characterOffset+0x03C); pendingElement.dataType = uint8;  break; //Evade
+				case 3: pendingElement.offset = (characterOffset+0x03F); pendingElement.dataType = uint16; break; //Magic Defence
+			}
+			editorFields.push(pendingElement);
+		}
+		editorFragment.appendChild(pendingFields);
+
+		// Spells
+		workString1 = '';
+		workData1 = []
+		// Sort spell list and preserve value for writing to save
+		for (i = 0; workData2 = tech.spells[i]; i++) { if (workData2[1]) { workData1[workData2[2]] = [workData2[0],i]; } }
+		for (i = 0; workData2 = workData1[i]; i++) { workString1 += '<option value=0x' + workData2[1].toString(16) + '>' + workData2[0] + '</option>' }
+		workString2 = '<div><span class=stringValue>' + formStrings.spellring + '</span><span>' + formStrings.target + '</span><br>';
+		for (i = 0; i < 12; i++) {
+			workString2 += '<span class=stringValue><select>' + workString1 + '</select></span>';
+			workString2 += '<span><select>\
+			<option>' + formStrings.targetEmpty + '</option>\
+			<option>' + formStrings.targetSingle + '</option>\
+			<option>' + formStrings.targetMulti + '</option>\
+			<option>' + formStrings.targetBoth + '</option>\
+			<option>' + formStrings.targetSelf + '</option>\
+			</select></span><br>';
+		}
+		workString2 += '</div>';
+		pendingFields = parseDOM(workString2);
+		for (i = 0; i < 12; i++) {
+			pendingElement = pendingFields.querySelectorAll('span:nth-of-type(odd) > select')[i]; pendingElement.offset = (characterOffset+0x073+i); pendingElement.dataType = arrayIndexed; // Spell
+			pendingElement.array = tech.spells;
+			editorFields.push(pendingElement);
+			pendingElement = pendingFields.querySelectorAll('span:nth-of-type(even) > select')[i]; pendingElement.offset = (characterOffset+0x07F+i); pendingElement.dataType = list; // Targeting Value
+			editorFields.push(pendingElement);
+		}
+		editorFragment.appendChild(pendingFields);
+
+		// Weapons
+		workString1 = '';
+		for (i = 0; workData1 = inventory.weapons[i]; i++) { if (workData1[1]) workString1 += '<option value=0x' + i.toString(16) + '>' + workData1[0] + '</option>' }
+		workString2 = '<div><span></span><span class=stringValue>' + formStrings.weapon + '</span><br>';
+		for (i = 0; i < 8; i++) {
+			if (i == 0) { workString2 += '<span>' + formStrings.equipped + '</span><span class=stringValue><select>' + workString1 + '</select></span><br>'; }
+			else        { workString2 += '<span></span><span class=stringValue><select>' + workString1 + '</select></span><br>'; }
+		}
+		workString2 += '</div>';
+		pendingFields = parseDOM(workString2);
+		for (i = 0; i < 8; i++) {
+			if (i == 0) { pendingElement = pendingFields.querySelectorAll('select')[i]; pendingElement.offset = (characterOffset+0x01D); } // Equipped
+			else        { pendingElement = pendingFields.querySelectorAll('select')[i]; pendingElement.offset = (characterOffset+0x043+(i-1)); } // Spares
+			pendingElement.dataType = arrayIndexed;
+			pendingElement.array = inventory.weapons;
+			editorFields.push(pendingElement);
+		}
+		editorFragment.appendChild(pendingFields);
+
+
+		// All armour pieces share the same identifier table
+		// Headgear
+		workString1 = '<option value=0x0>' + inventory.armour[0][0] + '</option>';
+		for (i = headgearStart; i <= headgearEnd ; i++) { workString1 += '<option value=0x' + i.toString(16) + '>' + inventory.armour[i][0] + '</option>' }
+		workString2 = '<div><span></span><span class=stringValue>' + formStrings.headgear + '</span><br>';
+		for (i = 0; i < 8; i++) {
+			if (i == 0) { workString2 += '<span>' + formStrings.equipped + '</span><span class=stringValue><select>' + workString1 + '</select></span><br>'; }
+			else        { workString2 += '<span></span><span class=stringValue><select>' + workString1 + '</select></span><br>'; }
+		}
+		workString2 += '</div>';
+		pendingFields = parseDOM(workString2);
+		for (i = 0; i < 8; i++) {
+			if (i == 0) { pendingElement = pendingFields.querySelectorAll('select')[i]; pendingElement.offset = (characterOffset+0x01E); } // Equipped
+			else        { pendingElement = pendingFields.querySelectorAll('select')[i]; pendingElement.offset = (characterOffset+0x053+(i-1)); } // Spares
+			pendingElement.dataType = arrayIndexed;
+			pendingElement.array = inventory.armour;
+			editorFields.push(pendingElement);
+		}
+		editorFragment.appendChild(pendingFields);
+		// Armour
+		workString1 = '<option value=0x0>' + inventory.armour[0][0] + '</option>';
+		for (i = armourStart; i <= armourEnd ; i++) { workString1 += '<option value=0x' + i.toString(16) + '>' + inventory.armour[i][0] + '</option>' }
+		workString2 = '<div><span></span><span class=stringValue>' + formStrings.armour + '</span><br>';
+		for (i = 0; i < 8; i++) {
+			if (i == 0) { workString2 += '<span>' + formStrings.equipped + '</span><span class=stringValue><select>' + workString1 + '</select></span><br>'; }
+			else        { workString2 += '<span></span><span class=stringValue><select>' + workString1 + '</select></span><br>'; }
+		}
+		workString2 += '</div>';
+		pendingFields = parseDOM(workString2);
+		for (i = 0; i < 8; i++) {
+			if (i == 0) { pendingElement = pendingFields.querySelectorAll('select')[i]; pendingElement.offset = (characterOffset+0x01F); } // Equipped
+			else        { pendingElement = pendingFields.querySelectorAll('select')[i]; pendingElement.offset = (characterOffset+0x05B+(i-1)); } // Spares
+			pendingElement.dataType = arrayIndexed;
+			pendingElement.array = inventory.armour;
+			editorFields.push(pendingElement);
+		}
+		editorFragment.appendChild(pendingFields);
+		// Accessories
+		workString1 = '<option value=0x0>' + inventory.armour[0][0] + '</option>';
+		for (i = accessoryStart; i <= accessoryEnd; i++) { workString1 += '<option value=0x' + i.toString(16) + '>' + inventory.armour[i][0] + '</option>' }
+		workString2 = '<div><span></span><span class=stringValue>' + formStrings.accessory + '</span><br>';
+		for (i = 0; i < 8; i++) {
+			if (i == 0) { workString2 += '<span>' + formStrings.equipped + '</span><span class=stringValue><select>' + workString1 + '</select></span><br>'; }
+			else        { workString2 += '<span></span><span class=stringValue><select>' + workString1 + '</select></span><br>'; }
+		}
+		workString2 += '</div>';
+		pendingFields = parseDOM(workString2);
+		for (i = 0; i < 8; i++) {
+			if (i == 0) { pendingElement = pendingFields.querySelectorAll('select')[i]; pendingElement.offset = (characterOffset+0x020); } // Equipped
+			else        { pendingElement = pendingFields.querySelectorAll('select')[i]; pendingElement.offset = (characterOffset+0x063+(i-1)); } // Spares
+			pendingElement.dataType = arrayIndexed;
+			pendingElement.array = inventory.armour;
+			editorFields.push(pendingElement);
+		}
+		editorFragment.appendChild(pendingFields);
+		// Shield
+		workString1 = '<option value=0x0>' + inventory.armour[0][0] + '</option>';
+		for (i = shieldStart; i <= shieldEnd ; i++) { workString1 += '<option value=0x' + i.toString(16) + '>' + inventory.armour[i][0] + '</option>' }
+		workString2 = '<div><span></span><span class=stringValue>' + formStrings.shield + '</span><br>';
+		for (i = 0; i < 8; i++) {
+			if (i == 0) { workString2 += '<span>' + formStrings.equipped + '</span><span class=stringValue><select>' + workString1 + '</select></span><br>'; }
+			else        { workString2 += '<span></span><span class=stringValue><select>' + workString1 + '</select></span><br>'; }
+		}
+		workString2 += '</div>';
+		pendingFields = parseDOM(workString2);
+		for (i = 0; i < 8; i++) {
+			if (i == 0) { pendingElement = pendingFields.querySelectorAll('select')[i]; pendingElement.offset = (characterOffset+0x021); } // Equipped
+			else        { pendingElement = pendingFields.querySelectorAll('select')[i]; pendingElement.offset = (characterOffset+0x06B+(i-1)); } // Spares
+			pendingElement.dataType = arrayIndexed;
+			pendingElement.array = inventory.armour;
+			editorFields.push(pendingElement);
+		}
+		editorFragment.appendChild(pendingFields);
+	}
+
+	editor.appendChild(editorFragment);
+
+	for (let field of editorFields) {
+		loadValue(field);
+	}
+}
+
+// Name parsing needs different code for English/Fansub/Japanese
+function parseName(field, readingValue) {
+	function convertEncoding(input, readingValue) {
+		var i, convertedString='';
+		switch(language.value) {
+		case 'english':
+			for (i = 0; i < input.length; i++) {
+				if (readingValue) {
+//					if (fromEncoding[input.charCodeAt(i)]) convertedString += fromEncoding[input.charCodeAt(i)];
+					if (fromEncoding[input[i]]) convertedString += fromEncoding[input[i]];
+//					else                                   convertedString += input.charAt(i);
+					else                        convertedString += String.fromCharCode(input[i]);
+				}
+			}
+			break;
+		case 'fansub':
+		case 'japanese':
+			for (i = 0; i < input.length; i++) {
+				if (readingValue) {
+					if (fromEncoding[input[i]]) convertedString += fromEncoding[input[i]];
+					else                        convertedString += String.fromCharCode(input[i]);
+				}
+			}
+			break;
+		}
+		return convertedString;
+	}
+	var i, joinedParty = false, name, rawName;
+	if (readingValue) {
+		name = [];
+		rawName = new DataView(rawData.buffer, saveOffset+field.offset[1], 12)
+		switch(language.value) {
+		case 'english':
+			for (var i = 0; i < 12; i++) {
+				name.push(rawName.getUint8(i))
+			}
+			break;
+		case 'fansub':
+		case 'japanese':
+			for (var i = 0; i < 6; i++) {
+				name.push(rawName.getUint16((i*2), LE))
+			}
+		}
+		name = convertEncoding(name, readingValue);
+		// Crop trailing null bytes.
+		name = name.split('\u0000')[0];
+		return name;
+	}
+	else {
+		name = field.value.split('');
+		for (i = 0; i < name.length; i++) {
+			name[i] = name[i].charCodeAt(0)
+		}
+		// rawName stored in two places
+		rawName = [];
+		rawName[0] = new DataView(rawData.buffer, saveOffset+field.offset[0], 12);
+		rawName[1] = new DataView(rawData.buffer, saveOffset+field.offset[1], 12);
+		// Check if character has joined party. Only write new name to second location if not.
+		// If you write to first location name will show up when loading save file — no other apparent effects though
+		if (rawName[0].getUint32(0, LE) == rawName[1].getUint32(0, LE)) joinedParty = true;
+		switch(language.value) {
+		// Single-byte encoding
+		case 'english':
+			for (i = 0; i < 12; i++) {
+				if (name[i]) {
+					if (toEncoding[name[i]]) { rawName[1].setUint8(i, toEncoding[name[i]]); if (joinedParty) rawName[0].setUint8(i, toEncoding[name[i]]);  }
+					else {                     rawName[1].setUint8(i, name[i]);             if (joinedParty) rawName[0].setUint8(i, name[i]); }
+				}
+				else {                         rawName[1].setUint8(i, 0x00);                if (joinedParty) rawName[0].setUint8(i, 0x00); }
+			}
+			break;
+		// Double-byte encoding
+		case 'fansub':
+		case 'japanese':
+			for (i = 0; i < 6; i++) {
+				if (name[i]) {
+					if (toEncoding[name[i]]) { rawName[1].setUint16(i*2, toEncoding[name[i]], LE); if (joinedParty) rawName[0].setUint16(i*2, toEncoding[name[i]], LE);  }
+					else {                     rawName[1].setUint16(i*2, name[i], LE);             if (joinedParty) rawName[0].setUint16(i*2, name[i], LE); }
+				}
+				else {                         rawName[1].setUint16(i*2, 0x0000, LE);              if (joinedParty) rawName[0].setUint16(i*2, 0x0000, LE); }
+			}
+			break;
+		}
+	}
+}
+// Time is stored in frames elapsed @ 60 fps
+function parsePlayedTime(field, readingValue) {
+	var raw, frames, seconds, minutes, hours;
+	if (readingValue) {
+		raw = rawData.getUint32(saveOffset+field.offset[0], LE)
+		frames = raw % 60;
+		seconds = ((raw-frames) / 60) % 60
+		minutes = ((((raw-frames-(seconds*60)))) / (60*60)) % 60
+		hours = (raw-frames-(seconds*60)-(minutes*60*60)) / (60*60*60)
+		return zeroPad(hours,'0') + ':' + zeroPad(minutes,'00') + ':' + zeroPad(seconds,'00') + '.' + zeroPad(frames,'00');
+	}
+	else {
+		if (field.value.split(/[:.]/).length == 4) {
+			frames = Number(field.value.split(/[:.]/)[3])
+			seconds = Number(field.value.split(/[:.]/)[2]);
+			minutes = Number(field.value.split(/[:.]/)[1]);
+			hours = Number(field.value.split(/[:.]/)[0]);
+			if ((frames < 60) &&
+			    (seconds < 60) &&
+			    (minutes < 60)) {
+				raw = frames+(seconds*60)+(minutes*60*60)+(hours*60*60*60);
+				rawData.setUint32(saveOffset+field.offset[0], raw, LE);
+				rawData.setUint32(saveOffset+field.offset[1], raw, LE);
+			}
+		}
+	}
+}
+// Game time is stored in two bytes
+// Hours ranging from 0-15
+// Minutes ranging from 0-31
+function parseGameTime(field, readingValue) {
+	var hours, minutes;
+	if (readingValue) {
+		hours = rawData.getUint8(saveOffset+field.offset);
+		minutes = rawData.getUint8(saveOffset+field.offset+1);
+		return zeroPad(hours,'00') + ':' + zeroPad(minutes,'00');
+	}
+	else {
+		if (field.value.split(/[:.]/).length == 2) {
+			minutes = Number(field.value.split(/[:.]/)[1]);
+			hours = Number(field.value.split(/[:.]/)[0]);
+			if ((hours < 16) && (minutes < 32)) {
+				rawData.setUint8(saveOffset+field.offset, hours);
+				rawData.setUint8(saveOffset+field.offset+1, minutes);
+			}
+		}
+	}
+}
+// Exprience is stored in two 16bit values.
+// The first tracks how many times the counter has rolled above 50000
+// The second tracks the remainder
+function calculateExp(field, readingValue) {
+	var multiplier, remainder;
+	if (readingValue) {
+		multiplier = rawData.getUint16(saveOffset+field.offset, LE);
+		remainder = rawData.getUint16(saveOffset+field.offset+0x2, LE);
+		return ((multiplier*50000)+remainder)
+	}
+	else {
+		multiplier = Math.floor(field.value/50000);
+		remainder = field.value % 50000;
+		rawData.setUint16(saveOffset+field.offset, multiplier, LE)
+		rawData.setUint16(saveOffset+field.offset+0x2, remainder, LE)
+	}
+}
+// Class is stored over three bytes
+// The first tracks the character (but only for the purpose of deciding the class)
+// The second tracks the class level
+// The third tracks the light/dark choices
+function calculateClass(field, readingValue) {
+	var classCharacter, classLevel, classId;
+	if (readingValue) {
+		classCharacter = rawData.getUint8(saveOffset+field.offset);
+		classLevel = rawData.getUint8(saveOffset+field.offset+0x1);
+		classId = rawData.getUint8(saveOffset+field.offset+0x2);
+		return (classCharacter*7)+((classLevel*2)-(classLevel==0?0:1))+classId;
+	}
+	else {
+		classCharacter = field.value.charAt(0);
+		classLevel = field.value.charAt(1);
+		classId = field.value.charAt(2);
+		rawData.setUint8(saveOffset+field.offset, classCharacter)
+		rawData.setUint8(saveOffset+field.offset+0x1, classLevel)
+		rawData.setUint8(saveOffset+field.offset+0x2, classId)
+	}
+}
+
+function loadValue(target) {
+	switch(target.dataType) {
+	case uint8:
+		target.value = rawData.getUint8(saveOffset+target.offset);
+		break;
+	case uint16:
+		target.value = rawData.getUint16(saveOffset+target.offset, LE);
+		break;
+	case uint32:
+		target.value = rawData.getUint32(saveOffset+target.offset, LE);
+		break;
+	case list:
+		target.selectedIndex = rawData.getUint8(saveOffset+target.offset)
+		break;
+	case arrayIndexed:
+		target.selectedIndex = target.array[rawData.getUint8(saveOffset+target.offset)][2];
+		break;
+	case zeroBased8:
+		target.value = (1+rawData.getUint8(saveOffset+target.offset));
+		break;
+	case custom:
+		target._load();
+		break;
+	}
+}
+
+function valueChanged(e) {
+	// Load existing value if newly entered value invalid
+	if (e.target.checkValidity()) {
+		if (e.target.offset && e.target.dataType && e.target.value) {
+			//log.innerHTML = 'Saved…'
+			switch(e.target.dataType) {
+			case uint8:
+				rawData.setUint8(saveOffset+e.target.offset, e.target.value);
+				break;
+			case uint16:
+				rawData.setUint16(saveOffset+e.target.offset, e.target.value, LE);
+				break;
+			case uint32:
+				rawData.setUint32(saveOffset+e.target.offset, e.target.value, LE);
+				break;
+			case list:
+				rawData.setUint8(saveOffset+e.target.offset, e.target.selectedIndex);
+				break;
+			case arrayIndexed:
+				rawData.setUint8(saveOffset+e.target.offset, Number(e.target.value));
+				break;
+			case zeroBased8:
+				rawData.setUint8(saveOffset+e.target.offset, (e.target.value-1));
+				break;
+			case custom:
+				e.target._save();
+				break;
+			}
+		}
+	}
+	else {
+		//log.innerHTML = 'Problem saving data…'
+		if (e.target.dataType != custom) loadValue(e.target);
+	}
+}
+
+/*
+ * parseDOM() - a shortcut for parsing a xhtml string into a DOM tree
+ *            - can use innerHTML/outerHTML as standardised alongside HTML5
+ *            - Still useful if you explictly want a DocumentFragment
+ */
+ function parseDOM(inputHTML) {
+	// Cached on first function use.
+	var parser = arguments.callee.parser || (arguments.callee.parser = new DOMParser());
+	var parsedContent = parser.parseFromString(inputHTML, 'text/html');
+
+	// Return a node if a single element is passed.
+	if (parsedContent.body.childNodes.length<=1) return parsedContent.body.firstChild;
+
+	// Otherwise use a documentFragment.
+	var fragment = document.createDocumentFragment();
+	while (parsedContent.body.hasChildNodes()) {
+		fragment.appendChild(parsedContent.body.firstChild);
+	}
+	return fragment;
+};
+// Pad a number by adding characters to the length then slicing from the left
+function zeroPad(number, padString) {
+	if (number >= (10 ** padString.length)) {
+		return number.toString();
+	}
+	else if (number < 0) {
+		return '-' + (padString + (number * -1)).slice(((padString.length) * -1))
+	}
+	else {
+		return (padString + number).slice(((padString.length) * -1))
+	}
+}
+
+function buildConversionTables() {
+	// Only store the bytes that need converting
+	// Anything else will get passed though as-is
+	fromEncoding = [];
+	toEncoding = [];
+	for (let character of encoding) {
+		// Converting from save file encoding should only include one conversion
+		// for each code encountered in the save file
+		if (character[2]) {
+			fromEncoding[character[0]] = character[1];
+		}
+		// Allow some different unicode characters to map to the same character in save
+		toEncoding[character[1].charCodeAt(0)] = character[0];
+	}
+}
+
+function levelUpThresholds() {
+	var returnString = '<span id=noteExp><style>\
+span#noteExp {\
+	display: flex;\
+	flex-wrap: wrap;\
+	width: 390px;\
+}\
+span#noteExp > span {\
+	width: 90px;\
+	margin: 0; padding: 0;\
+	display: inline-block;\
+	font-weight: normal;\
+}\
+span#noteExp > span:nth-of-type(odd) {\
+	width: 40px;\
+}\
+	</style>';
+	returnString += "<span class=header>" + formStrings.level + "</span><span class=header>" + formStrings.exp + "</span>";
+	returnString += "<span class=header>" + formStrings.level + "</span><span class=header>" + formStrings.exp + "</span>";
+	returnString += "<span class=header>" + formStrings.level + "</span><span class=header>" + formStrings.exp + "</span>";
+
+	var i, thresholds = ["0","30","67","125","204","363","602","945","1,418","2,049",
+	"2,870","3,914","5,218","6,819","8,759","11,080","13,827","17,049","20,794","25,115",
+	"30,065","35,701","42,081","49,265","57,316","66,298","76,278","87,324","99,507","112,899",
+	"127,575","143,611","161,086","180,080","200,675","222,956","247,009","272,921","300,783","330,686",
+	"362,724","396,992","433,588","472,611","514,162","558,343","605,260","655,018","707,726","763,494",
+	"822,433","884,658","950,283","1,019,425","1,092,204","1,168,739","1,249,153","1,333,570","1,422,116","1,514,918",
+	"1,612,106","1,713,810","1,820,163","1,931,299","2,047,354","2,168,465","2,294,772","2,426,416","2,563,540","2,706,287",
+	"2,854,804","3,009,239","3,169,740","3,336,459","3,509,548","3,689,162","3,875,456","4,068,587","4,268,715","4,476,000",
+	"4,690,605","4,912,693","5,142,430","5,379,983","5,625,521","5,879,214","6,141,234","6,411,754","6,690,950","6,978,998",
+	"7,276,076","7,582,364","7,898,043","8,223,296","8,558,308","8,903,264","9,258,352","9,623,761","9,999,682"];
+
+	for (i = 0; i<33; i++) {
+		returnString += "<span>" + (i+1) + "</span><span>" + thresholds[i] +  "</span>"
+		returnString += "<span>" + (i+34) + "</span><span>" + thresholds[i+33] + "</span>"
+		returnString += "<span>" + (i+67) + "</span><span>" + thresholds[i+66] + "</span>"
+	}
+	return returnString + '</span>';
+}
+
+function loadLanguage() {
+	switch (language.value) {
+	case 'english':
+		formStrings = JSON.parse(`{
+		"duran":"Duran",
+		"kevin":"Kevin",
+		"hawkeye":"Hawkeye",
+		"angela":"Angela",
+		"charlotte":"Charlotte",
+		"riesz":"Riesz",
+		"hover":"[Details]",
+		"note":"[Note]",
+		"money":"GP",
+		"played":"Time Played",
+		"day":"Day",
+		"time":"Time",
+		"hp":"HP",
+		"hpmax":"HP Max",
+		"mp":"MP",
+		"mpmax":"MP Max",
+		"str":"Strength",
+		"dex":"Dexterity",
+		"sta":"Stamina",
+		"int":"Intellect",
+		"spirit":"Spirit",
+		"luck":"Luck",
+		"atk":"Attack",
+		"def":"Defence",
+		"evade":"Evade",
+		"magicdef":"Magic Def.",
+		"character":"Character",
+		"name":"Name",
+		"validChars":"Valid characters for name",
+		"level":"Level",
+		"tech":"Tech Gauge",
+		"class":"Class",
+		"exp":"Experience",
+		"levelup":"Level up thresholds",
+		"next":"Next Level",
+		"itemring":"Item Ring",
+		"spellring":"Spell Ring",
+		"target":"Target",
+		"targetEmpty":"(Empty)",
+		"targetSingle":"One",
+		"targetMulti":"All",
+		"targetBoth":"One/All",
+		"targetSelf":"Self",
+		"item":"Items",
+		"weapon":"Weapons",
+		"headgear":"Helms",
+		"accessory":"Accessories",
+		"armour":"Armors",
+		"shield":"Shields",
+		"equipped":"Equipped",
+		"quantity":"Quantity",
+		"storage":"Storage"
+		}`);
+		days = JSON.parse('{"names":["Mana","Luna","Salamando","Undine","Dryad","Sylphid","Gnome"]}');
+		tech = JSON.parse(`{"classes":[
+		"Fighter (Base)",
+		"Knight (Light)","Gladiator (Dark)",
+		"Paladin (Light-Light)","Liege (Light-Dark)",
+		"Edelfrei (Dark-Light)","Duelist (Dark-Dark)",
+		"Grappler (Base)",
+		"Monk (Light)","Brawler (Dark)",
+		"Divine Fist (Light-Light)","Warrior Monk (Light-Dark)",
+		"Fatal Fist (Dark-Light)","Enlightened (Dark-Dark)",
+		"Thief (Base)",
+		"Ranger (Light)","Ninja (Dark)",
+		"Nomad (Light-Light)","Rogue (Light-Dark)",
+		"Ninja Master (Dark-Light)","Nightblade (Dark-Dark)",
+		"Magician (Base)",
+		"Sorceress (Light)","Mysticist (Dark)",
+		"Grand Diviner (Light-Light)","Archmage (Light-Dark)",
+		"Rune Seer (Dark-Light)","Magus (Dark-Dark)",
+		"Cleric (Base)",
+		"Priestess (Light)","Enchantress (Dark)",
+		"High Cleric (Light-Light)","Sage (Light-Dark)",
+		"Necromancer (Dark-Light)","Warlock (Dark-Dark)",
+		"Amazon (Base)",
+		"Valkyrie (Light)","Rune Maiden (Dark)",
+		"Vanadis (Light-Light)","Starlancer (Light-Dark)",
+		"Dragon Master (Dark-Light)","Fenrir Knight (Dark-Dark)"
+		],
+		"spells":[
+		["(Empty)",true,0],["Diamond Shards",true,1],["Earthquake",true,2],
+		["Stone Cloud",true,3],["Protection",true,4],["Impediment",true,5],
+		["Stone Saber",true,6],["Cyclone",true,7],["Thunderstorm",true,8],
+		["Stun Gust",true,9],["Accelerate",true,10],["Defenseless",true,11],
+		["Lightning Saber",true,12],["Ice Smash",true,13],["Spike Freeze",true,14],
+		["Cold Blaze",true,15],["Mental Boost",true,16],["Weaken",true,17],
+		["Ice Saber",true,18],["Fireball",true,19],["Explode",true,20],
+		["Blaze Wall",true,21],["Strengthen",true,22],["Enfeeble",true,23],
+		["Flame Saber",true,24],["Evil Gate",true,25],["Dark Force",true,26],
+		["Annihilate",true,27],["Dispel Magic",true,28],\["Dark Curse",true,29],
+		["Dark Saber",true,30],["Holy Bolt",true,31],["Lucent Beam",true,32],
+		["Healing Light",true,33],["Magic Shield",true,34],["Twinkle Rain",true,35],
+		["Holy Saber",true,36],["Lunatique",true,37],["Half Eclipse",true,38],
+		["Change Form",true,39],["Lunar Radiance",true,40],["Moon Energy",true,41],
+		["Moon Saber",true,42],["Sleep Flower",true,43],["Poison Bubble",true,44],
+		["Crystalline",true,45],["Nature Aura",true,46],["Wall",true,47],
+		["Leaf Saber",true,48],["*Analyzer",true,124],["Undead Away",true,49],
+		["Fetid Breath",true,50],["Glitter Dust",true,51],["Ancient Curse",true,52],
+		["*Ancient Curse II",true,125],["*Ancient Curse III",true,126],["Freya",true,53],
+		["Seraph",true,54],["Jormungandr",true,55],["Hexas",true,56],
+		["Chess Knight",true,57],["Machine Golem",true,58],["Ghoul",true,59],
+		["Ghost",true,60],["Gremlin",true,61],["Demon",true,62],
+		["Dirt Diversion",true,63],["Thunder Technique",true,64],["Water Diversion",true,65],
+		["Fire Diversion",true,66],["Arrow Rain",true,67],["Spikes",true,68],
+		["Rockfall",true,69],["Mines",true,70],["Poison Cloud",true,71],
+		["Fire Cloud",true,72],["Needle Shower",true,73],["Weapon Smack",true,74],
+		["Doppelganger",true,75],["Pressure Point",true,76],["*Triple Slash [Tech]",true,85],
+		["*Spin Slash [Tech]",true,86],["*Glint Slash [Tech]",true,87],["*Magic Rend [Tech]",true,88],
+		["*Hollow Slash [Tech]",true,89],["*Quakebringer [Tech]",true,90],["*Spin Kick [Tech]",true,91],
+		["*Tornado Throw",true,127],["*Abyssal Slice [Tech]",true,92],["*Burst Slam",true,128],
+		["*Byakko Wave [Tech]",true,93],["*Stardust Burst [Tech]",true,94],["*Genbu Kick",true,129],
+		["*Impact Blow",true,130],["*Suzaku Aerial [Tech]",true,95],["*Backspin",true,131],
+		["*Seiryu Strike [Tech]",true,96],["*Razing Crush",true,132],["*Swallow Throw [Tech]",true,97],
+		["*Shadow Slash [Tech]",true,98],["*Dance of Roses [Tech]",true,99],["*Slash Fury [Tech]",true,100],
+		["*Shadow Menace [Tech]",true,101],["*Split Slash [Tech]",true,102],["*Love Typhoon [Tech]",true,103],
+		["*Pummel Star  [Tech]",true,104],["*Boomerang Spiral [Tech]",true,105],["*Dancing Wand [Tech]",true,106],
+		["*Ton Shatter [Tech]",true,107],["*Hotshot [Tech]",true,108],["*Jump [Tech]",true,109],
+		["*Dash [Tech]",true,110],["*Chop Slap [Tech]",true,111],["*Kersplode [Tech]",true,112],
+		["*Bombtastic [Tech]",true,113],["*Jumbonk [Tech]",true,114],["*Lance Surge [Tech]",true,115],
+		["*Aerial Lance [Tech]",true,116],["*Light Lance [Tech]",true,117],["*Meteor Thrust [Tech]",true,118],
+		["*Dragon Rend [Tech]",true,119],["*Raging Fury [Tech]",true,120],["*Hand Axe [Item]",true,121],
+		["Shuriken",true,77],["*Dart [Item]",true,122],["*Bumpkin [Item]",true,123],
+		["Silver Dart",true,78],["Hatchet Throw",true,79],["Hurlbat",true,80],
+		["Rocket Launcher",true,81],["Axe Bomber",true,82],["Grumpkin",true,83],
+		["*Shadow Fear",true,133],["*Bombbox",true,134],["*Roulette Spin",true,135],
+		["*Thunderbolt",true,136],["*Rust Hurricane",true,137],["*String Song",true,138],
+		["*Eye Beam",true,139],["*Dive Bomb",true,140],["*Bubbleblast",true,141],
+		["*Ground Slam",true,142],["*Ground Slam",true,143],["*Hard Hit",true,144],
+		["*Aerial Attack",true,145],["*Supersonic",true,146],["*Feather Gale",true,147],
+		["Dark Rain",true,84],["*Bluster Gas",true,148],["*Ghostleader",true,149],
+		["*Tentacle Cloud",true,150],["*Squid Ink",true,151],["*Tidal Wave",true,152],
+		["*Sneakspike",true,153],["*Sandstream",true,154],["*Hyper Cannon",true,155],
+		["*Southern Slice",true,156],["*Dark Beam",true,157],["*Arrows",true,158],
+		["*Spikes",true,159],["*Stone",true,160],["*Bomb",true,161],
+		["*Smokescreen",true,162],["*Reaper",true,163],["*Polter Box",true,164],
+		["*Kaiser Mimic",true,165],["*Leaf Spine",true,166],["*Shackles",true,167],
+		["*Gush Blast",true,168],["*Bombs",true,169],["*Trap I",true,170],
+		["*Trap I",true,171],["*Ruby Axe",true,172],["*Icicle",true,173],
+		["*Frozen Crack",true,174],["*Reanimate",true,175],["*Reanimate",true,176],
+		["*Reanimate",true,177],["*Reanimate",true,178],["*Reanimate",true,179],
+		["*Reanimate",true,180],["*Reanimate",true,181],["*Reanimate",true,182],
+		["*Gravity Crush",true,183],["*Howl",true,184],["*Moon Spiral",true,185],
+		["*Grumpkin",true,186],["*Barrage Sting",true,187],["*Lava Wave",true,188],
+		["*Heat Beam",true,189],["*Gigantaburn",true,190],["*Meteor Volley",true,191],
+		["*Spin Slash",true,192],["*Magic Rend",true,193],["*Hollow Slash",true,194],
+		["*Quakebringer",true,195],["*Shadow Slash",true,196],["*Shadow Menace",true,197],
+		["*Split Slash",true,198],["*Lance Surge",true,199],["*Light Lance",true,200],
+		["*Spin Slash",true,201],["*Hollow Slash",true,202],["*Quakebringer",true,203],
+		["*Catastrophe",true,204],["*Demon Scream",true,205],["*Air Rush",true,206],
+		["*Flare",true,207],["*(Empty)",false,999],["*(Empty)",false,999],
+		["*(Empty)",false,999],["*(Empty)",false,999],["*Dissolving Wave",true,208],
+		["*Moon Spiral",true,209],["*Crosswind",true,210],["*Flash",true,211],
+		["*Psychic Blast",true,212],["*Thunderball",true,213],["*Whirlwind",true,214],
+		["*(Empty)",false,999],["*(Empty)",false,999],["*(Empty)",false,999],
+		["*(Empty)",false,999],["*(Empty)",false,999],["*(Empty)",false,999],
+		["*(Empty)",false,999],["*(Empty)",false,999],["*(Empty)",false,999],
+		["*(Empty)",false,999],["*(Empty)",false,999],["*(Empty)",false,999],
+		["*(Empty)",false,999],["*(Empty)",false,999],["*Pawn",true,215],
+		["*(Empty)",false,999],["*(Empty)",false,999],["*(Empty)",false,999],
+		["*(Empty)",false,999],["*(Empty)",false,999],["*(Empty)",false,999],
+		["*(Empty)",false,999],["*(Empty)",false,999],["*(Empty)",false,999],
+		["*(Empty)",false,999],["*(Empty)",false,999],["*(Empty)",false,999],
+		["*(Empty)",false,999],["*(Empty)",false,999],["*(Empty)",false,999],
+		["*(Empty)",false,999],["*(Empty)",false,999],["*(Empty)",false,999],
+		["*(Empty)",false,999],["*(Empty)",false,999],["*(Empty)",false,999],
+		["*(Empty)",false,999]
+		]}`);
+		inventory = JSON.parse(`{"items":[
+		"(Empty)","Knight Tag","Prince Tag",
+		"Battler Tag","Duelist Tag","Gold Aura",
+		"Silver Aura","Death Aura","Mage Aura",
+		"Lucky Dice","Destiny Dice","Precise Dice",
+		"Dusk Dice","Arcana Book","Esotera Book",
+		"Rune Book","Omen Book","Holy Bottle",
+		"Salt Bottle","Ash Bottle","Curse Bottle",
+		"Brisingamen","Evening Star","Dragoon Band",
+		"Gleipnir","Item Seed","Mystery Seed",
+		"Launch Seed","Magic Seed","??? Seed",
+		"Gear Seed","Earth Coin","Gnome Icon",
+		"Basilisk Fang","Bullete Scale","Needlion Eye",
+		"Bearclaw","Storm Coin","Sylphid Icon",
+		"Harpy Fang","Beak Scale","Bee Eye",
+		"Siren Claw","Ice Coin","Undine Icon",
+		"Dragon Fang","Sahagin Chip","Slime Eye",
+		"Poseidon Claw","Flame Coin","Mando Icon",
+		"Lizard Fang","Drake Scale","Batmo Eye",
+		"Cerberos Paw","Dark Coin","Shade Icon",
+		"Ghost Eye","Specter Eye","Shadow Eye",
+		"Demon Claw","Light Coin","Lumina Icon",
+		"Poto Oil","Ton Oil","Marmpoto Oil",
+		"Parpoto Oil","Moon Coin","Luna Icon",
+		"Imp Eye","Chobin Oil","Wolfiend Oil",
+		"Succube Claw","Mushboom Eye","Assassineye",
+		"Dryad Icon","Tezla Oil","Matango Oil",
+		"Crawler Claw","Hand Axe","Shuriken",
+		"Dart","Bumpkin","Candy",
+		"Chocolate","Faerie Walnut","Honey Elixir",
+		"Medical Herb","Stardust Herb","Cup of Wishes",
+		"Magic Rope","Nitromyte","Minor Mallet",
+		"Moogle Pin","Ferry Flute","Flammie Drum",
+		"Dream Reed","Key Piece A (dummy)","Key Piece B (dummy)",
+		"Enigma Key (dummy)","Dragon Eye (dummy)","Mirage Mirror",
+		"Demon Icon (dummy)"
+		],
+		"weapons":[
+		["(Empty)",true,0],["Bronze Sword",true,1],["Iron Sword",true,2],
+		["Gladius",true,3],["Broadsword",true,4],["Sabre",true,5],
+		["Steel Sword",true,6],["Bastard Sword",true,7],["Silver Blade",true,8],
+		["Estoc",true,9],["Falchion",true,10],["Flamberge",true,11],
+		["Colichemarde",true,12],["Shamshir",true,13],["Pale Storm",true,14],
+		["Mythril Sword",true,15],["Katzbalger",true,16],["Balmung",true,17],
+		["Várar Sword",true,18],["Herald Sword",true,19],["Tyrfing",true,20],
+		["Rapier",true,21],["Muramasa",true,22],["Claiomh Solais",true,23],
+		["Excalibur",true,24],["Laevateinn",true,25],["Dragonsbane",true,26],
+		["Brave Blade",true,27],["Sigmund",true,28],["Ragnarok",true,29],
+		["Deathbringer",true,30],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["Leather Glove",true,31],["Iron Knuckle",true,32],
+		["Spiked Glove",true,33],["Bearclaw",true,34],["Chain Glove",true,35],
+		["Bagh Nakh",true,36],["Fiend Claw",true,37],["Silver Thorn",true,38],
+		["Moogle Claw",true,39],["Keen Knuckle",true,40],["Power Glove",true,41],
+		["Spike Knuckle",true,42],["Acid Claw",true,43],["Cyclone Claw",true,44],
+		["Mythril Knuckle",true,45],["Bone Knuckle",true,46],["Clawberus",true,47],
+		["Gem Knuckle",true,48],["Ghost Fist",true,49],["Rock Claw",true,50],
+		["Gleam Glove",true,51],["Cressure",true,52],["Vampire Claw",true,53],
+		["Aura Glove",true,54],["Rot Knuckle",true,55],["Dragon Claw",true,56],
+		["Spiral Claw",true,57],["Mystic Glove",true,58],["Skullslicer",true,59],
+		["Gigant Glove",true,60],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["Flint Knife",true,61],["Dagger",true,62],
+		["Baselard",true,63],["Rondel Blade",true,64],["Sharktooth",true,65],
+		["Steel Dagger",true,66],["Misericorde",true,67],["Katara",true,68],
+		["Parry Dagger",true,69],["Karura",true,70],["Crystal Blade",true,71],
+		["Elfin Dagger",true,72],["Ashura",true,73],["Blue Gale",true,74],
+		["Mithril Knife",true,75],["Yasha",true,76],["Dance Dagger",true,77],
+		["Rugged Blade",true,78],["Bishamon",true,79],["Mercury Dirk",true,80],
+		["Sylvan Knife",true,81],["Taishaku",true,82],["Sheol Dagger",true,83],
+		["Crescent Dirk",true,84],["Acala",true,85],["Crimglare",true,86],
+		["Orichalcut",true,87],["Foeslayer",true,88],["Terralex Dirk",true,89],
+		["Finalblow",true,90],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["Wand",true,91],["Staff",true,92],
+		["Sorcerer Rod",true,93],["Twisted Rod",true,94],["Pewter Staff",true,95],
+		["Ruby Cane",true,96],["Crystal Staff",true,97],["Soul Staff",true,98],
+		["Scepter",true,99],["Shrewd Staff",true,100],["Ash Wand",true,101],
+		["Rigid Cane",true,102],["Thoth Wand",true,103],["Rebel Wand",true,104],
+		["Mythril Staff",true,105],["Skull Staff",true,106],["Mim Staff",true,107],
+		["Druid Staff",true,108],["Ghost Rod",true,109],["Nebula Staff",true,110],
+		["Yggdrasil Rod",true,111],["Antique Rod",true,112],["Oak Cane",true,113],
+		["Eternal Wand",true,114],["Cernunnos Rod",true,115],["Caduceus Rod",true,116],
+		["Gambanteinn",true,117],["Elemental Rod",true,118],["Rune Staff",true,119],
+		["Dragon Staff",true,120],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["Flail",true,121],["Wood Flail",true,122],
+		["Ball &amp; Chain",true,123],["Light Flail",true,124],["War Hammer",true,125],
+		["Steel Flail",true,126],["Duck Orb",true,127],["Silver Flail",true,128],
+		["Heavy Flail",true,129],["Hammer Flail",true,130],["Morning Star",true,131],
+		["Heiro Flail",true,132],["Puppet Flail",true,133],["Bonecrusher",true,134],
+		["Mythril Flail",true,135],["Troll Flail",true,136],["Scorpion Mace",true,137],
+		["Holy Flail",true,138],["Sibyl Flail",true,139],["Gravity Flail",true,140],
+		["Ultima Flail",true,141],["Leech Flail",true,142],["Meteor Flail",true,143],
+		["Mjolnir",true,144],["Doom Flail",true,145],["Velutina Flail",true,146],
+		["Judgment",true,147],["Gigas Flail",true,148],["Slayer Mace",true,149],
+		["Juggernaut",true,150],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["(Empty)",false,999],["(Empty)",false,999],
+		["(Empty)",false,999],["Bronze Spear",true,151],["Long Spear",true,152],
+		["Framea",true,153],["Corseque",true,154],["Partisan",true,155],
+		["Steel Lance",true,156],["Glaive",true,157],["Silver Lance",true,158],
+		["Winged Spear",true,159],["Sprite Spear",true,160],["Plumed Lance",true,161],
+		["Dark Impaler",true,162],["Treant Spear",true,163],["Golden Spear",true,164],
+		["Mythril Spear",true,165],["Headpounder",true,166],["Griffin Lance",true,167],
+		["Staghorn",true,168],["Wolf Fang",true,169],["Maidenleaf",true,170],
+		["Valkyrian",true,171],["Midhir Lance",true,172],["Brionac",true,173],
+		["Gungnir",true,174],["Painlance",true,175],["Blazespear",true,176],
+		["Truthlance",true,177],["Stargazer",true,178],["Dragon Lance",true,179],
+		["Gigas Lance",true,180]
+		],
+		"armour":[
+		["(Empty)",true,0],
+		["Hide Visor",true,1],["Head Gear",true,2],["Studded Helm",true,3],
+		["Helm Visor",true,4],["Horned Helm",true,5],["Silver Sallet",true,6],
+		["Beryl Armet",true,7],["Dragon Helm",true,8],["Hero Crown",true,9],
+		["Guard Helm",true,10],["Moonrise Hat",true,11],["Skullhead",true,12],
+		["Bandanna",true,13],["Warrior Scarf",true,14],["Twisted Scarf",true,15],
+		["Chakra Band",true,16],["Wolfsmane",true,17],["Demon Mask",true,18],
+		["Cryptid Mask",true,19],["Dragonsmane",true,20],["Ivory Scarf",true,21],
+		["Darkscarf",true,22],["Jade Scarf",true,23],["Ruby Scarf",true,24],
+		["Leather Cap",true,25],["Turban",true,26],["Feather Cap",true,27],
+		["Faerie Cap",true,28],["Bear Galea",true,29],["Black Hood",true,30],
+		["Dark Goggles",true,31],["Jester Cap",true,32],["Wind Cap",true,33],
+		["Wolf Galea",true,34],["Stealth Hood",true,35],["Ruby Mask",true,36],
+		["Circlet",true,37],["Sorcerer Hood",true,38],["Chryscirclet",true,39],
+		["Panther Hood",true,40],["Silver Circlet",true,41],["Snowy Veil",true,42],
+		["Misty Veil",true,43],["Moon Circlet",true,44],["Milane Crown",true,45],
+		["Radical Crown",true,46],["Rune Veil",true,47],["Ancient Tiara",true,48],
+		["Kitten Hood",true,49],["Rabite Cap",true,50],["Moogle Mask",true,51],
+		["Silk Ribbon",true,52],["Chobin Cowl",true,53],["Spirit Hood",true,54],
+		["Sun Cap",true,55],["Butterfly Bow",true,56],["High Ribbon",true,57],
+		["Sage Ribbon",true,58],["Undead Bow",true,59],["Vitium Ribbon",true,60],
+		["Winged Bow",true,61],["Leather Helm",true,62],["Barbute",true,63],
+		["Viking Helm",true,64],["Horned Crest",true,65],["Chess Helm",true,66],
+		["Aurora Helm",true,67],["Pegasus Helm",true,68],["Vanir Helm",true,69],
+		["Stardust Helm",true,70],["Wyvern Helm",true,71],["Wolf Helmet",true,72],
+		["Hide Bracer",true,1],["Steel Bracer",true,2],["Gauntlet",true,3],
+		["Strong Armlet",true,4],["Knight Crest",true,5],["Knight Band",true,6],
+		["Dragon Ring",true,7],["Battle Crest",true,8],["King Gloves",true,9],
+		["Leather Band",true,10],["Beast Choker",true,11],["Big Vambrace",true,12],
+		["Redmoon Horn",true,13],["Cardinal Eye",true,14],["Fiend Fang",true,15],
+		["Bone Choker",true,16],["Beryl Brace",true,17],["Fury Choker",true,18],
+		["Cicada Earrings",true,19],["Thief Bangle",true,20],["Cobra Earrings",true,21],
+		["Talisman",true,22],["Dyrad Ring",true,23],["Mist Charm",true,24],
+		["Wishbone",true,25],["Lucky Card",true,26],["Stealth Charm",true,27],
+		["Gem Ring",true,28],["Crystal Ring",true,29],["Mist Pendant",true,30],
+		["Guard Ring",true,31],["Snow Crystal",true,32],["Flame Flicker",true,33],
+		["Sage Stone",true,34],["Snow Barrette",true,35],["Blaze Barrette",true,36],
+		["Glass Ring",true,37],["Bunny Egg",true,38],["Moon Ring",true,39],
+		["Defense Ring",true,40],["Daylight Ring",true,41],["Shadow Ring",true,42],
+		["Magic Beads",true,43],["Moon Flower",true,44],["Black Onyx",true,45],
+		["Vambrace",true,46],["Steel Armlet",true,47],["Aeolian Armlet",true,48],
+		["Earthen Brace",true,49],["Gjallarhorn",true,50],["Rune Earrings",true,51],
+		["Mistle Armlet",true,52],["Draupnir",true,53],["Giant Ring",true,54],
+		["Patch Vest",true,1],["Stiff Leathers",true,2],["Common Mail",true,3],
+		["Lamellar Armor",true,4],["Hauberk",true,5],["Half-Plate",true,6],
+		["Plate Armor",true,7],["Luna Mail",true,8],["Reflex Armor",true,9],
+		["Pegasus Mail",true,10],["Leonis Armor",true,11],["Knight Armor",true,12],
+		["Knight Vest",true,13],["Gold Armor",true,14],["Silver Armor",true,15],
+		["Dragon Mail",true,16],["Hero Armor",true,17],["Guard Armor",true,18],
+		["Master Armor",true,19],["Skeleton Mail",true,20],["Cotton Attire",true,21],
+		["Leather Vest",true,22],["Fur Vest",true,23],["Duel Attire",true,24],
+		["Chain Vest",true,25],["Wolf Brace",true,26],["Vestguard",true,27],
+		["Wild Attire",true,28],["Vine Vest",true,29],["Battle Suit",true,30],
+		["Amber Attire",true,31],["Red Attire",true,32],["Indigo Attire",true,33],
+		["Cryptid Belt",true,34],["Demon Brace",true,35],["Scale Attire",true,36],
+		["Byakko Attire",true,37],["Genbu Attire",true,38],["Seiryu Attire",true,39],
+		["Suzaku Attire",true,40],["Cotton Kilt",true,41],["Fatigue",true,42],
+		["Camo Cloak",true,43],["Thief Cloak",true,44],["Soft Leathers",true,45],
+		["Skanda Cloak",true,46],["Chain Tunic",true,47],["Radiant Cape",true,48],
+		["Elf Vest",true,49],["Gale Cloak",true,50],["Fluorspar Vest",true,51],
+		["Cloak Mantle",true,52],["Black Robe",true,53],["Thief Cuirass",true,54],
+		["Ninja Garb",true,55],["Muted Tunic",true,56],["Ghost Cuirass",true,57],
+		["Wolf Pelt",true,58],["Sneaky Vest",true,59],["Black Garb",true,60],
+		["Cotton Robe",true,61],["Silk Robe",true,62],["Witch Robe",true,63],
+		["Bee Gown",true,64],["Bat Coat",true,65],["Tiger Two-Piece",true,66],
+		["Flower Suit",true,67],["Lapin Dress",true,68],["Owl Coat",true,69],
+		["Comfort Robe",true,70],["Manan Shift",true,71],["Dawn Dress",true,72],
+		["Dusk Dress",true,73],["Snowy Robe",true,74],["Raven Robe",true,75],
+		["Vision Coat",true,76],["Milane Dress",true,77],["Radical Coat",true,78],
+		["Rune Coat",true,79],["Ancient Robe",true,80],["Minor Robe",true,81],
+		["Sheep Pajamas",true,82],["Cleric Robe",true,83],["Popoi's Gown",true,84],
+		["Uniform Dress",true,85],["Poto Pajamas",true,86],["Velvet Cape",true,87],
+		["Moogle Smock",true,88],["Tonsuit",true,89],["Spark Robe",true,90],
+		["Glimmer Robe",true,91],["Golden Robe",true,92],["Silver Robe",true,93],
+		["Vestment",true,94],["Priestess Robe",true,95],["Dragon Robe",true,96],
+		["High Vestment",true,97],["Sages Robe",true,98],["Undead Suit",true,99],
+		["Vitium Dress",true,100],["Pad Leather",true,101],["Cuir Bouilli",true,102],
+		["Feather Vest",true,103],["Stud Leathers",true,104],["Chain Mail",true,105],
+		["Padded Mail",true,106],["Scale Mail",true,107],["Mani Plate",true,108],
+		["Elfin Plate",true,109],["Eagle Vest",true,110],["Druid Guard",true,111],
+		["Valkyrie Mail",true,112],["Rune Armor",true,113],["Wing Armor",true,114],
+		["Fang Armor",true,115],["Dream Armor",true,116],["Mana Armor",true,117],
+		["Polaris Armor",true,118],["Dragoon Guard",true,119],["Lupine Guard",true,120],
+		["Serpent Ward",true,1],["Scorch Ward",true,2],["Thunder Ward",true,3],
+		["Earth Shield",true,4],["Gold Shield",true,5],["Dragon Ward",true,6],
+		["Mystic Ward",true,7],["Oath Shield",true,8],["Terralex Ward",true,9]
+		]}`);
+		break;
+	case 'fansub':
+	case 'japanese':
+		formStrings = JSON.parse(`{
+		"duran":"Duran",
+		"kevin":"Kevin",
+		"hawkeye":"Hawk",
+		"angela":"Angela",
+		"charlotte":"Carlie",
+		"riesz":"Lise",
+		"hover":"[Hover for details]",
+		"note":"[Note]",
+		"money":"Luc",
+		"time":"Time Played",
+		"hp":"HP",
+		"hpmax":"HP Max",
+		"mp":"MP",
+		"mpmax":"MP Max",
+		"str":"Strength",
+		"dex":"Agility",
+		"sta":"Vitality",
+		"int":"Intelligence",
+		"spirit":"Spirit",
+		"luck":"Luck",
+		"atk":"Attack",
+		"def":"Defence",
+		"evade":"Evade Rate",
+		"magicdef":"Magic Def.",
+		"character":"Character",
+		"name":"Name",
+		"validChars":"Valid characters for name",
+		"level":"Level",
+		"tech":"Tech Gauge",
+		"class":"Class",
+		"exp":"Experience",
+		"levelup":"Level up thresholds",
+		"next":"Next Level",
+		"itemring":"Item Ring",
+		"spellring":"Spell Ring",
+		"target":"Target",
+		"targetEmpty":"(Nothing)",
+		"targetSingle":"One",
+		"targetMulti":"All",
+		"targetBoth":"One/All",
+		"targetSelf":"Self",
+		"item":"Items",
+		"weapon":"Weapons",
+		"headgear":"Helms",
+		"accessory":"Rings",
+		"armour":"Armors",
+		"shield":"Shields",
+		"equipped":"Equipped",
+		"quantity":"Quantity",
+		"storage":"Storage"
+		}`);
+		tech = JSON.parse(`{"classes":[
+		"Fighter (Base)",
+		"Knight (Light)","Gladiator (Dark)",
+		"Paladin (Light-Light)","Lord (Light-Dark)",
+		"Swordmaster (Dark-Light)","Duelist (Dark-Dark)",
+		"Grappler (Base)",
+		"Monk (Light)","Bashkar (Dark)",
+		"God Hand (Light-Light)","Warrior Monk(Light-Dark)",
+		"Death Hand (Dark-Light)","Dervish (Dark-Dark)",
+		"Thief (Base)",
+		"Ranger (Light)","Ninja (Dark)",
+		"Wanderer (Light-Light)","Rogue (Light-Dark)",
+		"Ninja Master (Dark-Light)","Nightblade (Dark-Dark)",
+		"Magician (Base)",
+		"Sorceress (Light)","Delvar (Dark)",
+		"Grand Divina (Light-Light)","Arch Mage (Light-Dark)",
+		"Rune Master (Dark-Light)","Magus (Dark-Dark)",
+		"Cleric (Base)",
+		"Priestess (Light)","Enchantress (Dark)",
+		"Bishop (Light-Light)","Sage (Light-Dark)",
+		"Necromancer (Dark-Light)","Evil Shaman (Dark-Dark)",
+		"Amazoness (Base)",
+		"Valkyrie (Light)","Rune Maiden (Dark)",
+		"Vanadis (Light-Light)","Star Lancer (Light-Dark)",
+		"Dragon Master (Dark-Light)","Fenrir Knight (Dark-Dark)"
+		],
+		"spells":[
+		["(Empty)",true,0],["Diamond Missile",true,1],["Earthquake",true,2],
+		["Stone Cloud",true,3],["Protect Up",true,4],["Speed Down",true,5],
+		["Diamond Saber",true,6],["Air Blast",true,7],["Thunderstorm",true,8],
+		["Stun Wind",true,9],["Speed Up",true,10],["Protect Down",true,11],
+		["Thunder Saber",true,12],["Ice Smash",true,13],["Mega Splash",true,14],
+		["Cold Blaze",true,15],["Mind Up",true,16],["Power Down",true,17],
+		["Ice Saber",true,18],["Fireball",true,19],["Explode",true,20],
+		["Blaze Wall",true,21],["Power Up",true,22],["Mind Down",true,23],
+		["Flame Saber",true,24],["Evil Gate",true,25],["Dark Force",true,26],
+		["DeathSpell",true,27],["AntiMagic",true,28],["Black Curse",true,29],
+		["Dark Saber",true,30],["Holy Ball",true,31],["Saint Beam",true,32],
+		["Heal Light",true,33],["Magic Shield",true,34],["Tinkle Rain",true,35],
+		["Saint Saber",true,36],["Lunatic",true,37],["Half Vanish",true,38],
+		["Body Change",true,39],["Life Booster",true,40],["Energy Ball",true,41],
+		["Moon Saber",true,42],["Sleep Flower",true,43],["Poison Bubble",true,44],
+		["TransShape",true,45],["Aura Wave",true,46],["Counter Magic",true,47],
+		["Leaf Saber",true,48],["*Detect",true,124],["Turn Undead",true,49],
+		["Demon Breath",true,50],["Rainbow Dust",true,51],["Ancient",true,52],
+		["*Ancient 2",true,125],["*Ancient 3",true,126],["Freya",true,53],
+		["Marduke",true,54],["Iormungand",true,55],["Lamian Naga",true,56],
+		["Unicorn Head",true,57],["Machine Golem",true,58],["Ghoul",true,59],
+		["Ghost",true,60],["Gremlin",true,61],["Great Demon",true,62],
+		["Earth Jutsu",true,63],["Thunder Jutsu",true,64],["Water Jutsu",true,65],
+		["Fire Jutsu",true,66],["Arrow",true,67],["Spike",true,68],
+		["Rock Fall",true,69],["Land Mine",true,70],["Poison Breath",true,71],
+		["Flame Breath",true,72],["Blow Needles",true,73],["Deadly Weapon",true,74],
+		["Double Spell",true,75],["Pressure Point",true,76],["*3-Step Cut [Tech]",true,85],
+		["*Whirlwind Sword [Tech]",true,86],["*Flashing Sword [Tech]",true,87],["*Magic Circle [Tech]",true,88],
+		["*Vacuum Sword [Tech]",true,89],["*Eruption Sword [Tech]",true,90],["*Whirlwind Kick [Tech]",true,91],
+		["*Tornado Throw",true,127],["*Water-Moon Slice [Tech]",true,92],["*Bastard Slam",true,128],
+		["*Byakko Shockwave [Tech]",true,93],["*Stardust Bomb [Tech]",true,94],["*Genbu 100-Kick",true,129],
+		["*Blow Impact",true,130],["*Suzaku Sky Dance [Tech]",true,95],["*Veritubach",true,131],
+		["*Seiryuu Death Fist [Tech]",true,96],["*Dead Crush",true,132],["*Flying Swallow Toss [Tech]",true,97],
+		["*Silhouette Slice [Tech]",true,98],["*Dance of Roses [Tech]",true,99],["*Thousand Slice [Tech]",true,100],
+		["*Shadow Dive [Tech]",true,101],["*Split-Image Slice [Tech]",true,102],["*Pink Typhoon [Tech]",true,103],
+		["*Star Attack [Tech]",true,104],["*Spiral Rod [Tech]",true,105],["*Dancing Rod [Tech]",true,106],
+		["*10t [Tech]",true,107],["*Hot Shot [Tech]",true,108],["*Jump [Tech]",true,109],
+		["*Dash [Tech]",true,110],["*ChopChop [Tech]",true,111],["*BoomBoom [Tech]",true,112],
+		["*Craaaazy [Tech]",true,113],["*HugeHuge [Tech]",true,114],["*Vacuum Surge Spear [Tech]",true,115],
+		["*Flying Heaven Spear [Tech]",true,116],["*Light Shot Spear [Tech]",true,117],["*Falling Star [Tech]",true,118],
+		["*Dragontooth Spear [Tech]",true,119],["*Hundred Flower Dance [Tech]",true,120],["*Hand Axe [Item]",true,121],
+		["Shuriken",true,77],["*Dart [Item]",true,122],["*Pumpkin Bomb [Item]",true,123],
+		["Silver Dart",true,78],["Cutter Missile",true,79],["Crescent",true,80],
+		["Rocket Launcher",true,81],["Axe Bomber",true,82],["Grenade Bomb",true,83],
+		["*Dark Fear",true,133],["*SurpriseBox Bomb",true,134],["*Death Roulette",true,135],
+		["*Thunderbolt",true,136],["*Rust Hurricane",true,137],["*Sweet String",true,138],
+		["*Eye Beam",true,139],["*Dive Attack",true,140],["*Bubble Breath",true,141],
+		["*Grand Slam",true,142],["*Grand Slam",true,143],["*Power Punch",true,144],
+		["*Sky Attack",true,145],["*Supersonic",true,146],["*Feather Blizzard",true,147],
+		["Black Rain",true,84],["*Gas Cloud",true,148],["*Ghost Road",true,149],
+		["*100 Tentacles",true,150],["*Squid Ink",true,151],["*Tidal Wave",true,152],
+		["*Revenge Spike",true,153],["*Sandstream",true,154],["*Hypercannon",true,155],
+		["*Hell Cross",true,156],["*Darkness Beam",true,157],["*Arrow",true,158],
+		["*Spike",true,159],["*Stone",true,160],["*Bomb",true,161],
+		["*Smoke",true,162],["*Mr. Death God",true,163],["*Ogre Box",true,164],
+		["*Kaiser Mimic",true,165],["*Spined Kelp",true,166],["*Prisoner",true,167],
+		["*Geyseblast",true,168],["*Bomb",true,169],["*Trap Level 1",true,170],
+		["*Trap Level 2",true,171],["*Bloody Axe",true,172],["*Icicle",true,173],
+		["*Ice Cradle",true,174],["*magicAF",true,175],["*magicB0",true,176],
+		["*magicB1",true,177],["*MagicB2",true,178],["*magicB3",true,179],
+		["*magicB4",true,180],["*magicB5",true,181],["*Regeneration",true,182],
+		["*Graviton Press",true,183],["*Howl",true,184],["*Spiral Moon",true,185],
+		["*Grenade Bomb",true,186],["*Killstinger",true,187],["*Lava Wave",true,188],
+		["*Heat Beam",true,189],["*Gigaburn",true,190],["*Death Ecstasy",true,191],
+		["*Whirlwind Sword",true,192],["*Magic Circle Cut",true,193],["*Vacuum Sword",true,194],
+		["*Eruption Sword",true,195],["*Silhouette Slice",true,196],["*Shadow Dive",true,197],
+		["*SplitImage Slice",true,198],["*VacuumSurgeSpear",true,199],["*Star Shot Spear",true,200],
+		["*Whirlwind Sword",true,201],["*Vacuum Sword",true,202],["*Eruption Sword",true,203],
+		["*Catastrophe",true,204],["*Demon Scream",true,205],["*Air Slasher",true,206],
+		["*Flare",true,207],["*SBD",false,999],["*SBD",false,999],
+		["*SBD",false,999],["*SBD",false,999],["*Melt Wave",true,208],
+		["*Spiral Moon",true,209],["*Turn Wind",true,210],["*Flash",true,211],
+		["*PsychoWave",true,212],["*Thunderball",true,213],["*Whirlwind",true,214],
+		["*SBD",false,999],["*SBD",false,999],["*SBD",false,999],
+		["*SBD",false,999],["*SBD",false,999],["*SBD",false,999],
+		["*SBD",false,999],["*SBD",false,999],["*SBD",false,999],
+		["*SBD",false,999],["*SBD",false,999],["*SBD",false,999],
+		["*SBD",false,999],["*SBD",false,999],["*poooooon",true,215],
+		["*SBD",false,999],["*SBD",false,999],["*SBD",false,999],
+		["*SBD",false,999],["*SBD",false,999],["*SBD",false,999],
+		["*SBD",false,999],["*SBD",false,999],["*SBD",false,999],
+		["*SBD",false,999],["*SBD",false,999],["*SBD",false,999],
+		["*SBD",false,999],["*SBD",false,999],["*SBD",false,999],
+		["*SBD",false,999],["*SBD",false,999],["*SBD",false,999],
+		["*SBD",false,999],["*SBD",false,999],["*SBD",false,999],
+		["*SBD",false,999]
+		]}`);
+		inventory = JSON.parse(`{"items":[
+		"(Nothing)","Paladin's Proof","Lord's Proof",
+		"Master's Proof","Duelist's Proof","Gold Wolf Soul",
+		"Silver Wolf Soul","Death Wolf Soul","Demon Wolf Soul",
+		"Good Luck Die","Bad Luck Die","Bullseye Die",
+		"Nighteye Die","Arcane Book","Book of Secrets",
+		"Book of Rune","Forbidden Book","Holy Water Vial",
+		"Bottle of Salt","Bottle of Ashes","Bottle of Blood",
+		"Briesingamen","MorningStarChain","KnightDrgn Chain",
+		"Gleipnir","Item Seed","Mysterious Seed",
+		"Flying Item Seed","Magic Seed","??? Seed",
+		"Weapn/Armor Seed","Earth Coin","Gnome Statue",
+		"Basilisk's Fang","Bullete's Scale","Needlion's Eye",
+		"Molebear's Claw","Storm Coin","Jinn Statue",
+		"Harpy's Fang","Bird's Scale","Bee's Eye",
+		"Siren's Claw","Ice Coin","Undine Statue",
+		"WhiteDragon Fang","Sahagin's Scale","Slime's Eye",
+		"Poseidon's Claw","Flame Coin","Salamando Statue",
+		"Fire Lizard Fang","Drake's Scale","Battum's Eye",
+		"Kerberos' Claw","Darkness Coin","Shade Statue",
+		"Ghost's Eye","Specter's Eye","Shadowzero's Eye",
+		"Demon's Claw","Light Coin","Wisp Statue",
+		"Poto Oil","Pakkun Oil","Mama Poto Oil",
+		"Papa Poto's Claw","Moon Coin","Luna Statue",
+		"ChibiDevil's Eye","Porobin Oil","Wolf Devil Oil",
+		"Carmilla's Claw","Myconid's Eye","Assassin Bug Eye",
+		"Dryad Statue","Grell Oil","Matango Oil",
+		"Crawler's Claw","Hand Axe","Shuriken",
+		"Dart","Pumpkin Bomb","Round Drop",
+		"Pakkun Chocolate","Magic Walnut","Honey Drink",
+		"Puipui Grass","Stardust Herb","Angel's Grail",
+		"Magical Rope","Gunpowder","Chibikko Hammer",
+		"Moogle Badge","Pihyara Flute","Wind Drum",
+		"Dreamsee Herb","Half Key A (dummy)","Half Key B (dummy)",
+		"Mystery Key (dummy)","Dragon's Eye (dummy)","Illusion Mirror",
+		"Demon Statue (dummy)"
+		],
+		"weapons":[
+		["(Nothing)",true,0],["Bronze Sword",true,1],["Iron Sword",true,2],
+		["Gladius",true,3],["Broadsword",true,4],["Sabre",true,5],
+		["Steel Sword",true,6],["Bastard Sword",true,7],["Silver Blade",true,8],
+		["Estoc",true,9],["Falchion",true,10],["Flamberge",true,11],
+		["Colichemarde",true,12],["Shamshir",true,13],["Palestorm",true,14],
+		["Mythril Sword",true,15],["Katzbalger",true,16],["Balmunk",true,17],
+		["Valar Sword",true,18],["Kusanagi Blade",true,19],["Tyrving",true,20],
+		["Defender",true,21],["Muramasa Blade",true,22],["Krau-Solas",true,23],
+		["Excalibur",true,24],["Levatein",true,25],["Dragonbane",true,26],
+		["Brave Blade",true,27],["Sigmund",true,28],["Ragnarok",true,29],
+		["Deathbringer",true,30],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["Leather Glove",true,31],["Iron Knuckles",true,32],
+		["Needle Glove",true,33],["Molebear Claw",true,34],["Chain Glove",true,35],
+		["Bagh Nakh",true,36],["Fiend's Claw",true,37],["Silverthorn",true,38],
+		["Moogle Claw",true,39],["Keen Knuckle",true,40],["Power Glove",true,41],
+		["Kaiser Knuckle",true,42],["Acid Claw",true,43],["Cyclone Claw",true,44],
+		["Mythril Knuckle",true,45],["Bone Knuckle",true,46],["Kerberos Claw",true,47],
+		["Diamond Knuckle",true,48],["Ghost Hand",true,49],["Rock Claw",true,50],
+		["Gleam Glove",true,51],["Jug Puncher",true,52],["Vampire Claw",true,53],
+		["Aura Glove",true,54],["Rotten Knuckle",true,55],["Dragon Claw",true,56],
+		["Spiral Claw",true,57],["Holy Glove",true,58],["Skull Disect",true,59],
+		["Gigas Glove",true,60],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["Flint Knife",true,61],["Dagger",true,62],
+		["Baselard",true,63],["Roundel Dagger",true,64],["Sharkteeth",true,65],
+		["Steel Dagger",true,66],["Misericorde",true,67],["Katar",true,68],
+		["Main Gauche",true,69],["Garuda",true,70],["Crystal Dagger",true,71],
+		["Elf Dagger",true,72],["Ashura",true,73],["Bluegale",true,74],
+		["Mithril Knife",true,75],["Yasha",true,76],["Dancing Dagger",true,77],
+		["Field Dagger",true,78],["Bishamon",true,79],["Merkiel Dagger",true,80],
+		["Sylvan Knife",true,81],["Taishaku",true,82],["Sheol Dirk",true,83],
+		["Crescent Knife",true,84],["Acala",true,85],["Crimson Glare",true,86],
+		["Orihalcon",true,87],["Manslaughter",true,88],["Kongo Rakan",true,89],
+		["Deathstroke",true,90],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["Wooden Cane",true,91],["Staff",true,92],
+		["Witch Staff",true,93],["Oak Cane",true,94],["Pewter Rod",true,95],
+		["Ruby Cane",true,96],["Crystal Rod",true,97],["Soul Rod",true,98],
+		["Varshu Staff",true,99],["Cunning Staff",true,100],["Ash Cane",true,101],
+		["Will Staff",true,102],["Tot's Cane",true,103],["Rajin's Cane",true,104],
+		["Mythril Rod",true,105],["Skull Rod",true,106],["Memyl Rod",true,107],
+		["Druid Cane",true,108],["Revelation Cane",true,109],["Nebula Staff",true,110],
+		["WorldTree Branch",true,111],["Ancient Rod",true,112],["Mizunara Cane",true,113],
+		["Eternal Rod",true,114],["Celnunnos Cane",true,115],["Ceryeceon",true,116],
+		["Ganvantein",true,117],["Spirit Cane",true,118],["Rune Staff",true,119],
+		["Dragon Rod",true,120],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["Hollow Rod",true,121],["Wood Flail",true,122],
+		["Ball and Chain",true,123],["Light Flail",true,124],["Warhammer",true,125],
+		["Steel Maul",true,126],["Duck Ironball",true,127],["Silver Flail",true,128],
+		["Heavy Flail",true,129],["Hammer Flail",true,130],["Morning Star",true,131],
+		["Heiro Flail",true,132],["Puppet Flail",true,133],["Blockbuster",true,134],
+		["Mythril Maul",true,135],["Troll Maul",true,136],["Cuneal Maul",true,137],
+		["Holy Flail",true,138],["Thibula Flail",true,139],["Gravity Maul",true,140],
+		["Ultima Maul",true,141],["Bloodsucker",true,142],["Meteo Flail",true,143],
+		["Mjolnir",true,144],["Satan Flail",true,145],["Vertina Maul",true,146],
+		["Judgementes",true,147],["Gigas Flail",true,148],["Maul of the Dead",true,149],
+		["Juggernaut",true,150],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["(Nothing)",false,999],["(Nothing)",false,999],
+		["(Nothing)",false,999],["Bronze Lance",true,151],["Long Spear",true,152],
+		["Flamea",true,153],["Corsesca",true,154],["Partisan",true,155],
+		["Steel Lance",true,156],["Glaive",true,157],["Silver Lance",true,158],
+		["Wing Spear",true,159],["Mystic Spear",true,160],["Plume Lance",true,161],
+		["Dark Piercer",true,162],["Torrento Spear",true,163],["Golden Spear",true,164],
+		["Mythril Spear",true,165],["Brainwrecker",true,166],["Griffin Lance",true,167],
+		["Staghorn",true,168],["Wolf's Fang",true,169],["Maidenleaf",true,170],
+		["Valkyrie Spear",true,171],["Mideel Spear",true,172],["Brunak",true,173],
+		["Gungnir",true,174],["Paintooth",true,175],["Blaze Piercer",true,176],
+		["True Spear",true,177],["Stargazer",true,178],["Dragon Lance",true,179],
+		["Giant's Spear",true,180]
+		],
+		"armour":[
+		["(Empty)",true,0],
+		["Leather Visor",true,1],["Headgear",true,2],["Studded Helm",true,3],
+		["Visored Helm",true,4],["Horned Helm",true,5],["Silver Sallet",true,6],
+		["Beryl Armet",true,7],["Dragon Helm",true,8],["Hero's Crown",true,9],
+		["Protection Helm",true,10],["Rising Moon Helm",true,11],["Skull Head",true,12],
+		["Bandanna",true,13],["Warrior Band",true,14],["Headband",true,15],
+		["Chakra Band",true,16],["Werewolf's Mane",true,17],["Majuu Mask",true,18],
+		["Genjuu Mask",true,19],["Dragon's Mane",true,20],["Ivory Band",true,21],
+		["Darkshine Band",true,22],["Sapphire Band",true,23],["Ruby Band",true,24],
+		["Leather Hat",true,25],["Garravilla",true,26],["Feather Hat",true,27],
+		["Fearie Hat",true,28],["Grizzly Garea",true,29],["Black Hood",true,30],
+		["Noctogoggles",true,31],["Fool's Crown",true,32],["Wind Spirit Hat",true,33],
+		["SilverWolf Garea",true,34],["Stealth Hood",true,35],["Bloody Mask",true,36],
+		["Circlet",true,37],["Witch Hood",true,38],["Emerald Tiara",true,39],
+		["Panther Hood",true,40],["Silver Circlet",true,41],["White Snow Veil",true,42],
+		["Mist Veil",true,43],["Moonstone Tiara",true,44],["Myein Crown",true,45],
+		["Eremos Crown",true,46],["Rune Veil",true,47],["Ancient Tiara",true,48],
+		["Cat-ear Hood",true,49],["Rabite Hat",true,50],["Mog Cap",true,51],
+		["Silk Ribbon",true,52],["Parobin Hood",true,53],["Holy Spirit Hood",true,54],
+		["Sunstone Hat",true,55],["Spiritus Ribbon",true,56],["Bishop's Ribbon",true,57],
+		["Sage's Ribbon",true,58],["Undead Ribbon",true,59],["Bitium Ribbon",true,60],
+		["Winged Ribbon",true,61],["Leather Helmet",true,62],["Barbute",true,63],
+		["Viking Helm",true,64],["Horncrest",true,65],["Unicorn Helm",true,66],
+		["Aurora Helmet",true,67],["Pegasus Helmet",true,68],["Vanir Helmet",true,69],
+		["Stardust Helmet",true,70],["Rising Dragon",true,71],["Wolf Helmet",true,72],
+		["Leather Gauntlet",true,1],["Steel Gauntlet",true,2],["Gauntlet",true,3],
+		["Strength Armband",true,4],["Knight's Crest",true,5],["Fencer's Armband",true,6],
+		["Dragon Ring",true,7],["War King's Crest",true,8],["Master's Armband",true,9],
+		["Leather Neckband",true,10],["Beastman Collar",true,11],["Power Wrist",true,12],
+		["Red Moon Horn",true,13],["Cardinal Eye",true,14],["Mad Beast's Fang",true,15],
+		["Dragon's Bone",true,16],["Toshei Armband",true,17],["Demon Neckband",true,18],
+		["Utsusemi Earring",true,19],["Thief's Armband",true,20],["Cobra Earrings",true,21],
+		["Ancient Talisman",true,22],["Tree Spirit Ring",true,23],["Mistscreen Charm",true,24],
+		["Wishbone",true,25],["Lucky Card",true,26],["Stealth Guard",true,27],
+		["Jewel Ring",true,28],["Crystal Ring",true,29],["Mist Pendant",true,30],
+		["Protect Ring",true,31],["Snow Crystal",true,32],["Fireblaze",true,33],
+		["Sage Stone",true,34],["Blizzard Hairpin",true,35],["Magma Hairpin",true,36],
+		["Marble Ring",true,37],["Bunny Egg",true,38],["Moon Ring",true,39],
+		["Protect Earrings",true,40],["Whitelight Ring",true,41],["Blackshade Ring",true,42],
+		["Magatama",true,43],["Moon Flower",true,44],["Black Onyx",true,45],
+		["Vambrace",true,46],["Steel Bracelet",true,47],["WindGod Bracelet",true,48],
+		["Earth Bracelet",true,49],["Gyralhorne",true,50],["Rune Earrings",true,51],
+		["Yadorigi Armlet",true,52],["Draupnir",true,53],["Giant's Ring",true,54],
+		["Quilted Leather",true,1],["Hard Leather",true,2],["Bezant Mail",true,3],
+		["Lamellar Armor",true,4],["Hauberk",true,5],["Half Plate",true,6],
+		["Plate Mail",true,7],["Lunula Mail",true,8],["Reflex",true,9],
+		["Pegasus Armor",true,10],["Leanis Plate",true,11],["Knight Armor",true,12],
+		["Swordsman Armor",true,13],["Gold Armor",true,14],["Platinum Armor",true,15],
+		["Dragon's Mail",true,16],["Hero's Armor",true,17],["Protect Armor",true,18],
+		["Master's Armor",true,19],["Skeleton Mail",true,20],["Cotton Uniform",true,21],
+		["Leather Belt",true,22],["Fur Vest",true,23],["Warrior Uniform",true,24],
+		["Chain Vest",true,25],["Wolf Belt",true,26],["Protector",true,27],
+		["Beast Uniform",true,28],["Lyshee Vest",true,29],["Battlesuit",true,30],
+		["Amber Uniform",true,31],["Red Uniform",true,32],["Blue Uniform",true,33],
+		["Genjuu Belt",true,34],["Majuu Belt",true,35],["Scale Uniform",true,36],
+		["Byakko Uniform",true,37],["Genbu Uniform",true,38],["Seiryuu Uniform",true,39],
+		["Suzaku Uniform",true,40],["Cotton Kilt",true,41],["Black Fatigue",true,42],
+		["Camoflage Cloak",true,43],["Thief's Cape",true,44],["Soft Leather",true,45],
+		["Idaten Cloak",true,46],["Chain Guard",true,47],["Moonbeam Cloak",true,48],
+		["Elf Breastplate",true,49],["Fleetwind Cape",true,50],["Flourite Plate",true,51],
+		["Utsushimi Cape",true,52],["Darksuit",true,53],["Yafuku Cuirass",true,54],
+		["Ninga Garb",true,55],["Shijima Mail",true,56],["Phantom Cuirass",true,57],
+		["Silverwolf Pelt",true,58],["Wind Demon Mail",true,59],["Black Garb",true,60],
+		["Cotton Robe",true,61],["Silk Robe",true,62],["Witch's Robe",true,63],
+		["Queen Bee Dress",true,64],["Bat Coat",true,65],["Tiger Bikini",true,66],
+		["Rose Leotard",true,67],["Bunnydress",true,68],["Owl Coat",true,69],
+		["Zephyr Robe",true,70],["Mananan Robe",true,71],["Sunrise Dress",true,72],
+		["Dusk Dress",true,73],["Pure White Robe",true,74],["Darkness Robe",true,75],
+		["Dreamdevil Coat",true,76],["Myein Dress",true,77],["Eremos Coat",true,78],
+		["Rune Coat",true,79],["Ancient Robe",true,80],["Chibikko Robe",true,81],
+		["Lamb Suit",true,82],["Priest's Robe",true,83],["Popoi's Rags",true,84],
+		["Sailor Dress",true,85],["Poto Suit",true,86],["Velvet Cape",true,87],
+		["Moogle Smock",true,88],["Pakkun Suit",true,89],["Glint Robe",true,90],
+		["Utsufishi Robe",true,91],["Golden Robe",true,92],["Silver Robe",true,93],
+		["Minister's Robe",true,94],["Shrine Girl Robe",true,95],["Kurikara Robe",true,96],
+		["Bishop's Robe",true,97],["Sage's Robe",true,98],["Undead Suit",true,99],
+		["Bitium Dress",true,100],["Padded Leather",true,101],["Cuir Boulli",true,102],
+		["Feather Vest",true,103],["Spiked Leather",true,104],["Chainmail",true,105],
+		["Banded Mail",true,106],["Scale Mail",true,107],["Mani Plate",true,108],
+		["Steda Plate",true,109],["WhiteEagle Plate",true,110],["Jotzdammoran",true,111],
+		["Valkrie Mail",true,112],["Rune Armor",true,113],["Wing Armor",true,114],
+		["Fang Armor",true,115],["Phantasm Armor",true,116],["Goddess Armor",true,117],
+		["Polaris Armor",true,118],["DrgnKnight Armor",true,119],["Wulfhezein",true,120],
+		["WaterDragon Shld",true,1],["Red-heat Shield",true,2],["Thunder God Shld",true,3],
+		["Earth Shield",true,4],["Gold Shield",true,5],["Dragon Shield",true,6],
+		["Sacred Shield",true,7],["Oath Shield",true,8],["Adamant Shield",true,9]
+		]}`);
+		break;
+	}
+	// ###NAME ENCODING###
+	switch (language.value) {
+	case 'english':
+		nameLength = 12;
+		validCharacters = '[space]<br>ABCDEFGHIJKLMNOPQRSTUVWXYZ<br>abcdefghijklmnopqrstuvwxyz<br>0123456789<br>ÀÁÂÄÇÈÉÊËÌÍÎÏÑÒÓÔÕÖÙÚÛÜ<br>àáâäçèéêëìíîïñòóôõöùúûü<br>&amp;()*+-.,/:&lt;=&gt;?¿!¡[]„‘’“”\'"–—©°<br>%\\▼…#_}™←↑→↓¹⁰ÆæŒœßẞ×÷';
+		validCharactersRegex = ' A-Za-z0-9ÀÁÂÄÇÈÉÊËÌÍÎÏÑÒÓÔÕÖÙÚÛÜàáâäçèéêëìíîïñòóôõöùúûü\\x26\\x28\\x29*+\\x2D.,\\/:\\x3C=\\x3E?¿!¡\\x5B\\x5D„‘’“”\\x27\\x26–—©°%\\x5C▼…#_\\x7D™←↑→↓¹⁰ÆæŒœßẞ×÷';
+		encoding = [[0x3B,'▼',true],[0x40,'&',true],[0x5C,'…',true],[0x5E,'#',true],
+		[0x60,'}',true],[0x99,'™',true],[0xA3,'‘',true],[0xA4,'’',true],
+		[0xA5,'“',true],[0xA6,'”',true],[0xAA,'„',true],[0xAC,'←',true],
+		[0xAD,'↑',true],[0xAE,'→',true],[0xAF,'↓',true],[0xB2,'‐',true],
+		[0xB3,'–',true],[0xB3,'—',false],[0xBA,'⁰',true],[0xD7,'×',true],
+		[0xD8,'Œ',true],[0xDF,'ß',true],[0xF8,'œ',true],[0xFF,'ẞ',true]]
+		break;
+	case 'fansub':
+		nameLength = 6;
+		validCharacters = '[space]<br>ABCDEFGHIJKLMNOPQRSTUVWXYZ<br>abcdefghijklmnopqrstuvwxyz<br>0123456789<br>.!?&amp;:+-*/=()"\',%_↑↓←→♥[]~×○●<br>#$;&lt;&gt;@\\^`{|}「」…・▼';
+		validCharactersRegex = ' A-Za-z0-9.!?\\x26:+\\x2D*\\/=\\x28\\x29\\x22\\x27,%_↑↓←→♥\\x5B\\x5D~×○●#$;\\x3C\\x3E@\\x5C^`\\x7B\\|\\x7D「」…・▼';
+		encoding = [[0x81,'「',true],[0x82,'」',true],[0x83,'○',true],[0x84,'●',true],
+		[0x85,'×',true],[0x86,'…',true],[0x87,'・',true],[0x88,'↑',true],
+		[0x89,'↓',true],[0x8A,'←',true],[0x8B,'→',true],[0x8C,'▼',true],
+		[0x8D,'♥',true],[0x8F,'&',true]];
+		break;
+	case 'japanese':
+		nameLength = 6;
+		validCharacters = '[space]<br>ABCDEFGHIJKLMNOPQRSTUVWXYZ<br>abcdefghijklmnopqrstuvwxyz<br>0123456789<br>%(    )    *+,\'   ./  :=!！?？"    “”↓‘’「」○●×…〜~-    ー–—♥・<br>あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよわん<br>らりるれろがぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽぁぃぅぇぉゃゅょっを<br>アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨワン<br>ラリルレロガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポァィゥェォャュョッヲヴ<br>時月日';
+		validCharactersRegex = ' A-Za-z0-9%\\x28\\x29*+,\\x27.\\/:=!?\\x22！”“↓‘’「」○？●×…時月日〜~\\x2Dー–—♥あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをんっゃゅょぁぃぅぇぉッャュョァィゥェォアイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲンがぎぐげござじずぜぞだぢづでどばびぶべぼガギグゲゴザジズゼゾダヂヅデドバビブベボヴぱぴぷぺぽパピプペポ・';
+		encoding = [[0x21,'！',false],[0x22,'”',true],[0x23,'“',true],[0x24,'↓',true],
+		[0x26,'‘',true],[0x27,'’',true],[0x3B,'「',true],[0x3C,'」',true],
+		[0x3E,'○',true],[0x3F,'？',false],[0x40,'●',true],[0x5B,'×',true],
+		[0x5C,'…',true],[0x5D,'時',true],[0x5E,'月',true],[0x5F,'日',true],
+		[0x60,'〜',true],[0x60,'~',false],[0x7D,'ー',true],[0x7D,'–',false],
+		[0x7D,'—',false],[0x7E,'♥',true],[0x7F,'あ',true],[0x80,'い',true],
+		[0x81,'う',true],[0x82,'え',true],[0x83,'お',true],[0x84,'か',true],
+		[0x85,'き',true],[0x86,'く',true],[0x87,'け',true],[0x88,'こ',true],
+		[0x89,'さ',true],[0x8A,'し',true],[0x8B,'す',true],[0x8C,'せ',true],
+		[0x8D,'そ',true],[0x8E,'た',true],[0x8F,'ち',true],[0x90,'つ',true],
+		[0x91,'て',true],[0x92,'と',true],[0x93,'な',true],[0x94,'に',true],
+		[0x95,'ぬ',true],[0x96,'ね',true],[0x97,'の',true],[0x98,'は',true],
+		[0x99,'ひ',true],[0x9A,'ふ',true],[0x9B,'へ',true],[0x9C,'ほ',true],
+		[0x9D,'ま',true],[0x9E,'み',true],[0x9F,'む',true],[0xA0,'め',true],
+		[0xA1,'も',true],[0xA2,'や',true],[0xA3,'ゆ',true],[0xA4,'よ',true],
+		[0xA5,'ら',true],[0xA6,'り',true],[0xA7,'る',true],[0xA8,'れ',true],
+		[0xA9,'ろ',true],[0xAA,'わ',true],[0xAB,'を',true],[0xAC,'ん',true],
+		[0xAD,'っ',true],[0xAE,'ゃ',true],[0xAF,'ゅ',true],[0xB0,'ょ',true],
+		[0xB1,'ぁ',true],[0xB2,'ぃ',true],[0xB3,'ぅ',true],[0xB4,'ぇ',true],
+		[0xB5,'ぉ',true],[0xB6,'ッ',true],[0xB7,'ャ',true],[0xB8,'ュ',true],
+		[0xB9,'ョ',true],[0xBA,'ァ',true],[0xBB,'ィ',true],[0xBC,'ゥ',true],
+		[0xBD,'ェ',true],[0xBE,'ォ',true],[0xBF,'ア',true],[0xC0,'イ',true],
+		[0xC1,'ウ',true],[0xC2,'エ',true],[0xC3,'オ',true],[0xC4,'カ',true],
+		[0xC5,'キ',true],[0xC6,'ク',true],[0xC7,'ケ',true],[0xC8,'コ',true],
+		[0xC9,'サ',true],[0xCA,'シ',true],[0xCB,'ス',true],[0xCC,'セ',true],
+		[0xCD,'ソ',true],[0xCE,'タ',true],[0xCF,'チ',true],[0xD0,'ツ',true],
+		[0xD1,'テ',true],[0xD2,'ト',true],[0xD3,'ナ',true],[0xD4,'ニ',true],
+		[0xD5,'ヌ',true],[0xD6,'ネ',true],[0xD7,'ノ',true],[0xD8,'ハ',true],
+		[0xD9,'ヒ',true],[0xDA,'フ',true],[0xDB,'ヘ',true],[0xDC,'ホ',true],
+		[0xDD,'マ',true],[0xDE,'ミ',true],[0xDF,'ム',true],[0xE0,'メ',true],
+		[0xE1,'モ',true],[0xE2,'ヤ',true],[0xE3,'ユ',true],[0xE4,'ヨ',true],
+		[0xE5,'ラ',true],[0xE6,'リ',true],[0xE7,'ル',true],[0xE8,'レ',true],
+		[0xE9,'ロ',true],[0xEA,'ワ',true],[0xEB,'ヲ',true],[0xEC,'ン',true],
+		[0xED,'が',true],[0xEE,'ぎ',true],[0xEF,'ぐ',true],[0xF0,'げ',true],
+		[0xF1,'ご',true],[0xF2,'ざ',true],[0xF3,'じ',true],[0xF4,'ず',true],
+		[0xF5,'ぜ',true],[0xF6,'ぞ',true],[0xF7,'だ',true],[0xF8,'ぢ',true],
+		[0xF9,'づ',true],[0xFA,'で',true],[0xFB,'ど',true],[0xFC,'ば',true],
+		[0xFD,'び',true],[0xFE,'ぶ',true],[0xFF,'べ',true],[0x100,'ぼ',true],
+		[0x101,'ガ',true],[0x102,'ギ',true],[0x103,'グ',true],[0x104,'ゲ',true],
+		[0x105,'ゴ',true],[0x106,'ザ',true],[0x107,'ジ',true],[0x108,'ズ',true],
+		[0x109,'ゼ',true],[0x10A,'ゾ',true],[0x10B,'ダ',true],[0x10C,'ヂ',true],
+		[0x10D,'ヅ',true],[0x10E,'デ',true],[0x10F,'ド',true],[0x110,'バ',true],
+		[0x111,'ビ',true],[0x112,'ブ',true],[0x113,'ベ',true],[0x114,'ボ',true],
+		[0x115,'ヴ',true],[0x116,'ぱ',true],[0x117,'ぴ',true],[0x118,'ぷ',true],
+		[0x119,'ぺ',true],[0x11A,'ぽ',true],[0x11B,'パ',true],[0x11C,'ピ',true],
+		[0x11D,'プ',true],[0x11E,'ペ',true],[0x11F,'ポ',true],[0x1AF,'・',true]];
+		break;
+	}
+/*
+		formStrings = JSON.parse('{
+		"gp":"Luc",
+		"item":"Item Ring",
+		"quantity":"Quantity",
+		"storage":"Item Storage"
+		}');
+		inventory = JSON.parse('{"items":[
+		"Nothing","Paladin\'s Proof","Lord\'s Proof",
+		"Master\'s Proof","Duelist\'s Proof","Gold Wolf Soul",
+		"Silver Wolf Soul","Death Wolf Soul","Demon Wolf Soul",
+		"Good Luck Die","Bad Luck Die","Bullseye Die",
+		"Nighteye Die","Arcane Book","Book of Secrets",
+		"Book of Rune","Forbidden Book","Holy Water Vial",
+		"Bottle of Salt","Bottle of Ashes","Bottle of Blood",
+		"Briesingamen","MorningStarChain","KnightDrg Chain",
+		"Gleipnir","Item Seed","Mysterious Seed",
+		"Flying Item Seed","Magic Seed","??? Seed",
+		"Weapn/Armor Seed","Earth Coin","Gnome Statue",
+		"Basilisk\'s Fang","Bullete\'s Scale","Needlion\'s Eye",
+		"Molebear\'s Claw","Storm Coin","Jinn Statue",
+		"Harpy\'s Fang","Bird\'s Scale","Bee\'s Eye",
+		"Siren\'s Claw","Ice Coin","Undine Statue",
+		"WhiteDragon Fang","Sahagin\'s Scale","Slime\'s Eye",
+		"Poseidon\'s Claw","Flame Coin","Salamando Statue",
+		"Fire Lizard","Drake\'s Scale","Battum\'s Eye",
+		"Kerberos\' Claw","Darkness Coin","Shade Statue",
+		"Ghost\'s Eye","Specter\'s Eye","Shadowzero\'s Eye",
+		"Demon\'s Claw","Light Coin","Wisp Statue",
+		"Poto Oil","Pakkun Oil","Mama Poto Oil",
+		"Papa Poto\'s Claw","Moon Coin","Luna Statue",
+		"ChibiDevil\'s Eye","Porobin Oil","Wolf Devil Oil",
+		"Carmilla\'s Claw","Myconid\'s Eye","Assassin Bug Eye",
+		"Dryad Statue","Grell Oil","Matango Oil",
+		"Crawler\'s Claw","Hand Axe","Shuriken",
+		"Dart","Pumpkin Bomb","Round Drop",
+		"Pakkun Chocolate","Magic Walnut","Honey Drink",
+		"Pupui Grass","Stardust Herb","Angel\'s Grail",
+		"Magical Rope","Gunpowder","Chibikko Hammer",
+		"Moogle Badge","Pihyara Flute","Wind Drum",
+		"Dreamsee Herb","Half Key A (dummy)","Half Key B (dummy)",
+		"Mystery Key (dummy)","Dragon\'s Eye (dummy)","Illusion Mirror",
+		"Demon Statue (dummy)"
+		]}');
+		break;
+*/
+}
+		</script>
+	</body>
+</html>
