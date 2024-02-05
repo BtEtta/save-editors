@@ -1,0 +1,1586 @@
+﻿<!doctype html>
+
+<!--Todo: Rename BonusPower to SealBonus / Quality to Bonus Power -->
+
+<html>
+	<head>
+		<title>Hyrule Warriors: Age of Calamity — Save Editor</title>
+		<style>
+/*** GLOBAL ***/
+body {
+	background-color: #222; color: #DDD;
+	font-family: sans-serif;
+	font-size: 8pt;
+}
+
+/*** LEVEL 1 ***/
+header, #global, #selector, #editor {
+	display: flex;
+	flex-wrap: wrap;
+}
+header,
+article > div {
+	padding: 5px; margin: 5px;
+	border: 1px dotted #DDD;
+}
+
+header { align-items: center; }
+#log {
+	display: inline-block;
+	padding-left: 50px;
+	flex: 1;
+}
+
+
+article button { font-size: 8pt; }
+article button.selected { border: 1px dotted #DDD }
+article button[disabled] { opacity: 50%; }
+
+article input,
+article select,
+#editor button {
+	padding-left: 3px;
+	margin: 2px 0 2px 0;
+	box-sizing: : content-box;
+	font-size: 8pt;
+}
+article .smallValue { width: 50px; }
+article .mediumValue { width: 75px; }
+article .largeValue { width: 100px; }
+article .stringValue { width: 150px; }
+article .sortValue { width: 25px; }
+article [type="date"],
+article [type="time"] { width: auto; }
+article [type="checkbox"] { max-width: 15px; }
+
+/*** LEVEL 2 ***/
+#global div > span { padding: 0 5px; }
+
+#selector {
+	justify-content: space-evenly;
+}
+#selector.active {
+	border-bottom: 1px dotted #DDD;
+	padding-bottom: 5px;
+	margin-bottom: 5px;
+}
+#selector > button {
+	flex: auto;
+	max-width: 125px;
+}
+#selector > span:first-child:last-child {
+	flex: auto;
+}
+
+#editor,
+#editor > div.group { align-items: start; }
+
+#editor > div,
+#editor > div.group > div {
+	margin: 0 10px 0 0;
+	flex: none;
+	display: grid;
+	grid-template-columns: repeat(2, auto);
+	align-items: center;
+}
+#editor div.gridThree {
+	grid-template-columns: repeat(3, auto);
+}
+#editor div.gridFour {
+	grid-template-columns: repeat(4, auto);
+}
+#editor > div.group {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: start
+}
+#editor div > * {
+	margin-right: 5px;
+}
+#editor div > span:nth-child(2n+2),
+#editor div > input:nth-child(2n+2),
+#editor div > select:nth-child(2n+2) {
+	text-align: right;
+}
+#editor div > input[type="checkbox"]:nth-child(2n+2) { justify-self: end; }
+
+#editor div[class^="grid"] > span:nth-child(2n+2),
+#editor div[class^="grid"] > input:nth-child(2n+2),
+#editor div[class^="grid"] > select:nth-child(2n+2) {
+	text-align: left;
+}
+#editor div[class^="grid"] > input[type="checkbox"]:nth-child(2n+2) { justify-self: end; }
+
+#editor div.gridThree > span:nth-child(3n+2),
+#editor div.gridThree > input:nth-child(3n+2),
+#editor div.gridThree > select:nth-child(3n+2),
+#editor div.gridFour > span:nth-child(4n+2),
+#editor div.gridFour > input:nth-child(4n+2),
+#editor div.gridFour > select:nth-child(4n+2) {
+	text-align: right;
+}
+#editor div.gridThree > input[type="checkbox"]:nth-child(3n+2),
+#editor div.gridFour > input[type="checkbox"]:nth-child(4n+2) { justify-self: end; }
+
+#editor.weapons {
+	display: grid;
+	grid-template-columns: 2ch minmax(120px, auto) 25px 25px 45px 40px 55px 45px 45px 45px repeat(12, minmax(50px, auto)) minmax(45px, auto);
+	grid-gap: 0 5px;
+	gap: 0 5px;
+	align-items: center;
+}
+#editor.weapons > span.header {
+	align-self: end;
+	font-weight: bold;
+}
+
+#editor.weapons > span { text-align: center !important; }
+#editor.weapons > .row,
+#editor.weapons > .type,
+#editor.weapons > .level,
+#editor.weapons > .cap,
+#editor.weapons > .exp,
+#editor.weapons > .quality,
+#editor.weapons > .bonusPower,
+#editor.weapons > .levelPower,
+#editor.weapons > .counter,
+#editor.weapons > .rusty,
+#editor.weapons > .locked {
+	grid-row-end: span 2;
+}
+#editor.weapons > .seal {
+	grid-column-end: span 2;
+}
+#editor.weapons > .rusty,
+#editor.weapons > .locked {
+	justify-self: center;
+}
+
+#editor select,
+#editor option { padding: 1px 3px 1px 0; }
+#editor optgroup { padding: 0; background-color: #DDD; color: #222; }
+
+/*** FORM CONTROLS ***/
+select, input, button {
+	background-color: #222;	color: #DDD;
+	border: 1px solid #DDD;
+}
+button {
+	background-color: #444;	color: #DDD;
+}
+select[disabled], input[disabled], button.selected {
+	background-color: #888; color: #222;
+}
+
+input[type="file"] { border: none; }
+input, select { padding-right: 0; }
+button {
+	margin-right: 2px;
+	border: 1px solid #DDD;
+	padding: 1px 5px;
+
+}
+/*** INLINE ***/
+label { margin-right: 5px; }
+span.gridSpan {
+	font-weight: bold;
+	white-space: nowrap;
+	grid-column: 1 / -1;
+}
+span.header {
+	justify-self: center;
+}
+span.disabled { color: #888; }
+span.warning { color: #B33; }
+
+span.button {
+	display: inline-grid;
+	position: relative;
+	white-space: nowrap;
+}
+span.button > div {
+	top: 20px;
+	position: absolute;
+	z-index: 9999;
+	background-color: #444;
+	border: 1px solid #DDD;
+	padding: 5px;
+	display: flex;
+	align-items: center;
+	font-weight: normal;
+}
+span.button > div > * {
+	white-space: nowrap;
+	text-align: left !important;
+}
+span.button.right > div {
+	right: 0;
+}
+span.button.left > div {
+	left: 0;
+}
+
+span.note {
+	justify-self: center;
+	font-weight: normal;
+}
+span.note > span { display: none; }
+span.note:hover > span {
+	z-index: 9999;
+	display: inline-block;
+	padding: 4px;
+	background-color: #FFA; color: #222;
+	border: 1px solid black;
+	position: absolute;
+	font-weight: normal;
+	min-width: 200px;
+	white-space: nowrap;
+	text-align: left;
+}
+span.separator {
+	border-bottom: 1px dotted #DDD;
+	padding-bottom: 5px;
+	margin-bottom: 5px;
+}
+		
+		</style>
+	</head>
+	<body>
+		<header>
+			<span>
+				<label>Choose file: <input type=file id=input accept="svdt" autocomplete=off></label>
+				<button type=button id=save disabled autocomplete=off>Save Changes</button>
+			</span>
+			<span id=log>Hyrule Warriors: Age of Calamity — Save Editor</span>
+		</header>
+		<article>
+			<div id=global>
+				<div>
+					<label>Page:</label></div>
+				</div>
+			<div id=page><!--
+			 --><div id=selector></div><!--
+			 --><div id=editor><span>ALWAYS REMEMBER TO BACKUP YOUR FILE. I accept no responsibily for any problems that occur from using this editor.</span></div>
+			</div>
+		</article>
+		<script>
+'use strict';
+
+// Data Type IDs
+const custom = 1;
+const uint8 = 2;
+const uint16 = 3;
+const uint32 = 4;
+const uint64 = 5;
+const float32 = 6
+const arrayIndexed8 = 7;
+const arrayIndexed16 = 8;
+const arrayIndexed32 = 9;
+const checkbox = 10;
+const text = 11;
+const bitmask = 12;
+const debugToString=20;
+
+const callbackAfterLoad = 1;
+const callbackCustomLoad = 2;
+const callbackBeforeSave = 3;
+const callbackAfterSave = 4;
+const callbackCustomSave = 5;
+// Modifier Mode (when loading, will be reversed when saving)
+const modAdd = 1;
+const modSubtract = 2;
+const modMultiply = 3;
+const modDivide = 4;
+const modSpecial = 5;
+
+// Store references to a few HTML elements
+var header = document.querySelector('header');
+var input = document.querySelector('#input');
+var save = document.querySelector('#save');
+var log = document.querySelector('#log'); // Used to test data validation fails during development
+var global = document.querySelector('#global');
+var selector = document.querySelector('#selector');
+var editor = document.querySelector('#editor');
+
+// Desktop Safari sucks.
+var dateTimeSupport = testDateInput();
+
+var selectedPage = 0;
+var pageButtons = [];
+var pageCharacters = addPageButton('Characters', true);
+var pageWeapons = addPageButton('Weapons', true, true);
+var pageMaterials = addPageButton('Materials', true);
+
+// For Testing
+const debug = 0;
+
+var globalFields;
+var editorFields;
+
+var fileName='';
+
+// File Size
+const switchFileSize = 1048576;
+
+// Will contain the DataView for our ArrayBuffer
+var rawData;
+
+var decodeText = new TextDecoder();
+var encodeText = new TextEncoder();
+
+// Offsets index
+// 0 = 1.1.0
+// 1 = 1.2.0/1.2.1
+// 2 = 1.3.0
+// Default to most recent
+var saveVer = 2;
+
+// Data
+var characters;
+var weapons;
+var materials;
+var experience;
+
+// Constants for little-endian/big-endian while manipulating the DataView
+const LE = true, BE = false;
+
+// Subpage selections
+var selectedCharacter = 0;
+var selectedWeapons = 0;
+var characterCount = [18,19,21];
+
+// Created and cached the first time the weapons page is loaded
+var weaponTypeSelect;
+var weaponCapSelect;
+var weaponSealSelect;
+var weaponEmptyWeapons;
+
+// Offsets
+var rupeeOffset = [0x1EDB4,0x2C302,0x2C3A4];
+var totalRupeeOffset = [0x2C8A8,0x3C21A,0x3C2BF];
+var materialsOffset = [0x1EB5E,0x2C0AC,0x2C14E];
+var materialsKnownOffset = [0x1ECED,0x2C23B,0x2C2DD];
+/*
+// Character specific offsets
+var characterOffset = 0x33072;
+var charTotalSize = 0x30;
+
+var charBadgeBitmask  = 0x02;
+var charCostumeBitmask = 0x0C;
+var charUnlocked = 0x012;
+var charStrength = 0x14;
+var charAltLevel = 0x16;
+var charHearts = 0x18;
+var charExp = 0x1A;
+var charWeapon = 0x1E;
+var charCostume = 0x21;
+var charLevel = 0x22;
+var charHeartPieces = 0x23;
+var charFairy = 0x25;
+
+*/
+// Weapon Specific Offsets
+var weaponsOffset = [0xEE3,0x11A8,0x11E6];
+var weaponTotalSize = [0x4D,0x51,0x51];
+// Each character actually has space for 51 weapons, presumably to allow for collecting up to ten new weapons in a battle.
+// Changed in 1.2.0
+var weaponTotalWeapons = [51,71,71];
+
+var weaponType = [0x00,0x00,0x00];
+var weaponLevel = [0x02,0x02,0x02];
+var weaponExp = [0x03,0x03,0x03];
+var weaponQuality = [0x07,0x07,0x07];
+var weaponBonusPower = [0x08,0x08,0x08];
+var weaponLevelPower = [0x0A,0x0A,0x0A];
+var weaponCap = [0x1E,0x1E,0x1E];
+var weaponCounter = [0x1F,0x1F,0x1F];
+var weaponRusty = [0x27,0x27,0x27];
+var weaponSeal = [[0x28,0x29,0x2A,0x2B,0x0C,0x0D],[0x28,0x29,0x2A,0x2B,0x0C,0x0D],[0x28,0x29,0x2A,0x2B,0x0C,0x0D]];
+var weaponSealValue1 = [[0x2C,0x2E,0x30,0x32,0x0E,0x10],[0x2C,0x2E,0x30,0x32,0x0E,0x10],[0x2C,0x2E,0x30,0x32,0x0E,0x10]];
+var weaponSealValue2 = [[0x34,0x36,0x38,0x3A,0x12,0x14],[0x34,0x36,0x38,0x3A,0x12,0x14],[0x34,0x36,0x38,0x3A,0x12,0x14]];
+// Educated guess based on weapon structure
+// No seals (or anything else) currently appear to use these values
+var weaponSealValue3 = [[0x3C,0x3E,0x40,0x42,0x16,0x18],[0x3C,0x3E,0x40,0x42,0x16,0x18],[0x3C,0x3E,0x40,0x42,0x16,0x18]];
+var weaponSealValue4 = [[0x44,0x46,0x48,0x4A,0x1A,0x1C],[0x44,0x46,0x48,0x4A,0x1A,0x1C],[0x44,0x46,0x48,0x4A,0x1A,0x1C]];
+var weaponUnknown1 = [0x34,0x34,0x34];
+var weaponUnknown2 = [0x38,0x38,0x38];
+var weaponLocked = [0x4C,0x4C,0x4C];
+
+document.addEventListener('drop', loadFile, false);
+document.addEventListener('dragenter', handleDrag, false);
+document.addEventListener('dragover', handleDrag, false);
+
+input.addEventListener('change', loadFile, false);
+save.addEventListener('click', saveFile, false);
+global.addEventListener('click', changePage, true); //Capturing
+
+// Capture and save changes to values
+document.querySelector('article').addEventListener('input', valueChanged, true);
+
+loadData();
+
+function handleDrag(e) {
+	e.preventDefault();
+}
+
+// Called from a 'change' event on the file input
+// or 'drop' event on <header>
+function loadFile(e) {
+	var reader, file;
+
+	// Are we getting files from a drop event or <input type="file">
+	// Assumes if multiple files were selected we just want the first one.
+	if (e.dataTransfer && e.dataTransfer.files) {
+		e.preventDefault()
+		e.stopPropagation()
+		file = e.dataTransfer.files[0]
+	}
+	else if (e.target.files) {
+		file = e.target.files[0]
+	}
+
+	if (file) {
+
+		fileName = file.name;
+
+		// Create a FileReader and setup what happens when its loaded.
+		reader = new FileReader();
+		reader.onload = function (e) {
+			var contents = e.target.result;
+			var buffer = reader.result;
+
+			// Keep DataView as a global variable because it's the laziest way.
+			rawData = new DataView(buffer);
+
+			// Skip to the code to parse the file
+			parseFile(rawData);
+		}
+
+		// Tell the browser to load the file as an ArrayBuffer triggering the above event when loaded.
+		reader.readAsArrayBuffer(file);
+	}
+}
+
+function parseFile() {
+	if (rawData.buffer.byteLength == switchFileSize) {
+		switch (rawData.getUint8(0)) {
+			// Version 1.1.0?
+			case 87: saveVer = 0; break;
+			// Version 1.2.0
+			// Version 1.2.1
+			case 120:
+			case 122: saveVer = 1; break;
+			// Version 1.3.0
+			case 137: saveVer = 2; break;
+		}
+		toggleButtons(false);
+		selectedCharacter = 0;
+		selectedWeapons = 0;
+		weaponEmptyWeapons = new Array(characterCount[saveVer]);
+		createUI();
+	}
+	else {
+		toggleButtons(true);
+		editor.innerHTML = 'INCORRECT FILE SIZE — FILE NOT LOADED';
+	}
+}
+
+function saveFile() {
+	// File() contructor takes an array of ArrayBuffer (or similar) objects.
+	var fileOutput = new File([rawData], fileName, { type: "application/octet-stream",});
+	var fileURL = URL.createObjectURL(fileOutput);
+
+	// Should just be able to set: location = fileURL;
+	// But WebKit/Blink don't use specified file name in this instance. Firefox works.
+	// Workaround uses 'download' property of anchor elements.
+	// Support for 'download' is still new (as of 2017) in WebKit.
+	var fileAnchor = document.createElement("a");
+	fileAnchor.style = "display: none";
+	fileAnchor.href = fileURL;
+	fileAnchor.download = fileName;
+
+	document.body.appendChild(fileAnchor);
+	fileAnchor.click();
+	document.body.removeChild(fileAnchor);
+
+	// No way to detect when blob: URL is no longer needed.
+	// On Edge, revokeObjectURL should be called only after
+	// a.click() has completed, at least on EdgeHTML 15.15048
+	// Completely arbitrary timing used.
+	setTimeout(function() { URL.revokeObjectURL(fileURL);}, 1000);
+}
+
+function changePage(e) {
+	if (e.target.tagName.match(/button/i) &&
+		!(e.target.disabled)) {
+		pageButtons[selectedPage].className = '';
+		selectedPage = Number(e.target.value);
+		pageButtons[selectedPage].className = 'selected';
+		// Reinitialise empty weapon cache here so changing subpages can call createUI()
+		if (selectedPage == pageWeapons) weaponEmptyWeapons = new Array(characterCount[saveVer]);
+		createUI();
+	}
+}
+
+function toggleButtons(state) {
+	var i, button;
+	save.disabled = state;
+	for (i = 0; button = pageButtons[i]; i++) button.disabled = state;
+}
+
+function clearGlobals() {
+	while (pageButtons[pageButtons.length-1].nextElementSibling) {
+		global.firstElementChild.removeChild(pageButtons[pageButtons.length-1].nextElementSibling)
+	}
+}
+
+function createUI() {
+	globalFields = [];
+	editorFields = [];
+	var i, j, baseOffset, wrapCounter, wrapSize, pendingFields, workData;
+
+	// Reset Editor
+	clearGlobals();
+	selector.innerHTML = '';
+	selector.className = '';
+	editor.innerHTML = '';
+	editor.className = '';
+
+	pendingFields = document.createDocumentFragment();
+	pendingFields.appendChild(makeSpan('', 'Rupees:'));
+	pendingFields.appendChild(makeInput('mediumValue', 'number', rupeeOffset[saveVer], uint32, checkTotalRupees, 0, 9999999, true));
+	if (debug) {
+		pendingFields.appendChild(makeSpan('', 'Total Rupees:'));
+		pendingFields.appendChild(makeInput('mediumValue', 'number', totalRupeeOffset[saveVer], uint32, null, null, null, false, null,  null, true));
+	}
+	globalFields.push(editorFields.pop());
+
+	global.firstElementChild.appendChild(pendingFields);
+
+	switch (selectedPage) {
+	case pageCharacters:
+		break;
+	case pageWeapons:
+
+		editor.className = 'weapons';
+		// limit weapon choices outside of debug mode
+		if (debug) {
+			if (!(weaponTypeSelect)) weaponTypeSelect = buildSelectData(weapons.type);
+		}
+		else {
+			// Always include initial [Blank] row
+			var includeWeapons = true;
+			workData = [];
+			for (let weaponType of weapons.type) {
+				if (weaponType[2] == 1) {
+					includeWeapons = false;
+					if (weaponType[3] == selectedWeapons) {
+						includeWeapons = true;
+						workData.push(weaponType);
+					}
+				}
+				else if (includeWeapons) {
+					workData.push(weaponType);
+				}
+			}
+			weaponTypeSelect = buildSelectData(workData);
+		}
+		if (!(weaponCapSelect)) weaponCapSelect = buildSelectData([["20", 0],["25", 1],["30", 2],["50", 3]]);
+		if (!(weaponSealSelect)) weaponSealSelect = buildSelectData(weapons.seal);
+
+		for (i = 0; i < characterCount[saveVer]; i++) {
+			if (characters[i][1] == selectedWeapons) addSubPageButton(characters[i][0], characters[i][1], true);
+			else                                     addSubPageButton(characters[i][0], characters[i][1]);
+		}
+		pendingFields = document.createDocumentFragment();
+		pendingFields.appendChild(makeSpan('header', '#'));
+		pendingFields.appendChild(makeSpan('header', 'Weapon'));
+		pendingFields.appendChild(makeSpan('header', 'Rusty'));
+		pendingFields.appendChild(makeSpan('header', 'Lock'));
+		pendingFields.appendChild(makeSpan('header', 'Level'));
+		pendingFields.appendChild(makeSpan('header', 'Level Cap'));
+		pendingFields.appendChild(makeSpan('header', 'Exp'));
+		pendingFields.appendChild(makeSpan('header', 'Quality'));
+		pendingFields.appendChild(makeSpan('header', 'Bonus Power'));
+		pendingFields.appendChild(makeSpan('header', 'Level Power'));
+		// Weapons are assigned a counter based on how many drops have been received for that character
+		// Doesn't seem to serve any purpose and some weapons get a counter of 0 in all circumstances
+		//pendingFields.appendChild(makeSpan('header', 'Counter'));
+		pendingFields.appendChild(makeSpan('seal header', 'Seal 1'));
+		pendingFields.appendChild(makeSpan('seal header', 'Seal 2'));
+		pendingFields.appendChild(makeSpan('seal header', 'Seal 3'));
+		pendingFields.appendChild(makeSpan('seal header', 'Seal 4'));
+		pendingFields.appendChild(makeSpan('seal header', 'Seal 5'));
+		pendingFields.appendChild(makeSpan('seal header', 'Seal 6'));
+		pendingFields.appendChild(makeSpan('', ''));
+
+		if (weaponEmptyWeapons[selectedWeapons] === undefined) {
+			weaponEmptyWeapons[selectedWeapons] = new Array(weaponTotalWeapons[saveVer]);
+			for (i = 0; i < weaponTotalWeapons[saveVer]; i++) {
+				baseOffset = weaponsOffset[saveVer] + (selectedWeapons * (weaponTotalWeapons[saveVer] * weaponTotalSize[saveVer])) + (i * weaponTotalSize[saveVer]);
+				if (rawData.getUint16(baseOffset + weaponType[saveVer], LE) > 0) weaponEmptyWeapons[selectedWeapons][i] = 1;
+				else                                                             weaponEmptyWeapons[selectedWeapons][i] = 0;
+			}
+		}
+
+		for (i = 0; i < weaponTotalWeapons[saveVer]; i++) {
+			// Load all weapons in debug mode
+			if ((debug) || (weaponEmptyWeapons[selectedWeapons][i] > 0)) {
+				baseOffset = weaponsOffset[saveVer] + (selectedWeapons * (weaponTotalWeapons[saveVer] * weaponTotalSize[saveVer])) + (i * weaponTotalSize[saveVer]);
+				pendingFields.appendChild(makeSpan('row' , i));
+				pendingFields.appendChild(makeSelect('type', weaponTypeSelect, baseOffset + weaponType[saveVer], arrayIndexed16));
+				pendingFields.appendChild(makeCheckbox('rusty', baseOffset + weaponRusty[saveVer], checkbox));
+				pendingFields.appendChild(makeCheckbox('locked', baseOffset + weaponLocked[saveVer], checkbox));
+				pendingFields.appendChild(makeInput('level', 'number', baseOffset + weaponLevel[saveVer], uint8, false, 1, 30, true, modAdd, 1));
+				pendingFields.appendChild(makeSelect('cap', weaponCapSelect, baseOffset + weaponCap[saveVer], arrayIndexed8));
+				pendingFields.appendChild(makeInput('exp', 'number', baseOffset + weaponExp[saveVer], uint32, false, 0, 99999, true));
+				// Highest quality encountered naturally in my saves so far.
+				pendingFields.appendChild(makeInput('quality', 'number', baseOffset + weaponQuality[saveVer], uint8, false, 0, 23, true));
+				pendingFields.appendChild(makeInput('bonusPower', 'number', baseOffset + weaponBonusPower[saveVer], uint16, false, 0, 65536, true));
+				pendingFields.appendChild(makeInput('levelPower', 'number', baseOffset + weaponLevelPower[saveVer], uint16, false, 0, 65536, true));
+				//pendingFields.appendChild(makeInput('counter', 'number', baseOffset + weaponCounter[saveVer], uint32, false, 0, 4294967295, true));
+				for (j = 0; j < 6; j++) {
+					pendingFields.appendChild(makeSelect('seal', weaponSealSelect, baseOffset + weaponSeal[saveVer][j], arrayIndexed8));
+				}
+				pendingFields.appendChild(makeButton('right', 'Swap', baseOffset, swapWeapons));
+				for (j = 0; j < 6; j++) {
+					pendingFields.appendChild(makeInput('value', 'number', baseOffset + weaponSealValue1[saveVer][j], uint16, false, false, false, true));
+					pendingFields.appendChild(makeInput('value', 'number', baseOffset + weaponSealValue2[saveVer][j], uint16, false, false, false, true));
+					//pendingFields.appendChild(makeInput('value', 'number', baseOffset + weaponSealValue3[saveVer][j], uint16, false, false, false, true));
+					//pendingFields.appendChild(makeInput('value', 'number', baseOffset + weaponSealValue4[saveVer][j], uint16, false, false, false, true));
+				}
+				pendingFields.appendChild(makeButton('right', 'Insert', baseOffset, insertWeapon, false, false, i));
+				if (debug) {
+					// Unconfirmed fields = 1, array duplicated in updateSubPage
+					pendingFields.appendChild(makeSpan('gridSpan debug', debugString(baseOffset, weaponTotalSize[saveVer],
+					[0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1]),
+					false, baseOffset));
+				}
+				else {
+					pendingFields.appendChild(makeSpan('gridSpan separator', ''));
+				}
+			}
+		}
+		if (!debug) pendingFields.appendChild(makeButton('gridSpan', 'Add Weapon', baseOffset, addWeapon));
+		
+		editor.appendChild(pendingFields);
+		break;
+	case pageMaterials:
+		materialList(materials.fruit, 'Fruits', 999, 20);
+		materialList(materials.fungi, 'Fungi', 999, 20);
+		materialList(materials.plant, 'Vegetable/Flower', 999, 20);
+		materialList(materials.meat, 'Meats', 999, 20);
+		materialList(materials.misc, 'Miscellanous', 999, 20);
+		materialList(materials.seafood, 'Seafood', 999, 20);
+		materialList(materials.small, 'Small Animals', 999, 20);
+		materialList(materials.ore, 'Ores', 999, 20);
+		materialList(materials.monster, 'Monster Parts', 999, 20);
+		materialList(materials.ancient, 'Ancient Components', 999, 20);
+		materialList(materials.trophy, 'Trophies', 9999, 20);
+		materialList(materials.special, 'Special', 999, 20);
+		if (debug) materialList(materials.debug, 'Debug', 999, 20);
+
+		function materialList(data, header, max, wrapSize) {
+			var wrapCounter = 0;
+			for (i = 0; i < data.length; i++) {
+				if ((wrapCounter%wrapSize) == 0) {
+					editor.appendChild(pendingFields);
+					pendingFields = document.createElement('div');
+					pendingFields.className = 'gridThree';
+					if (data.length > wrapSize) pendingFields.appendChild(makeSpan('header gridSpan', header + ' ' + ((wrapCounter/wrapSize)+1)));
+					else                        pendingFields.appendChild(makeSpan('header gridSpan', header));
+				}
+				wrapCounter++;
+				pendingFields.appendChild(makeSpan('', data[i][0]));
+				pendingFields.appendChild(makeInput('smallValue', 'number', materialsOffset[saveVer]+(data[i][1]*2), uint16, false, 0, max, true));
+				pendingFields.appendChild(makeCheckbox('', materialsKnownOffset[saveVer]+data[i][1], checkbox, checkMaterialWarning));
+			}
+			editor.appendChild(pendingFields);
+		}
+		break;
+	}
+	loadAllValues();
+	if (selectedPage == pageWeapons) updateWeaponsActualPower();
+}
+
+function checkTotalRupees(mode, target) {
+	if (mode == callbackAfterSave) {
+		var total = rawData.getUint32(totalRupeeOffset[saveVer], LE);
+		if (total < Number(target.value)) {
+			rawData.setUint32(totalRupeeOffset[saveVer], Number(target.value), LE);
+		}
+	}
+}
+
+function checkMaterialWarning(mode, target) {
+	if ((mode == callbackAfterLoad) || (mode == callbackAfterSave)) {
+		if (target.checked) target.previousSibling.disabled = false;
+		else                target.previousSibling.disabled = true;
+	}
+}
+
+function updateWeaponsActualPower() {
+}
+
+function dataSwap(offsetA, offsetB, size) {
+	var dataA = new Uint8Array(rawData.buffer, offsetA, size);
+	var dataB = new Uint8Array(rawData.buffer, offsetB, size);
+	var dataSwap = new Uint8Array(size);
+	dataSwap.set(dataA);
+	dataA.set(dataB);
+	dataB.set(dataSwap);
+}
+
+function dataInsert(selectedRow, targetRow, dataOffset, dataRows, rowSize) {
+	var newData = new Uint8Array(dataRows * rowSize);
+	if (selectedRow > targetRow) {
+		// Start until before target row.
+		if (targetRow > 0) newData.set(new Uint8Array(rawData.buffer, dataOffset, rowSize*targetRow))
+		// Selected row.
+		newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*selectedRow), rowSize), rowSize*targetRow);
+		// Target until before selected row.
+		newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*targetRow), rowSize*(selectedRow - targetRow)), rowSize*(targetRow+1));
+		// After selected row until end.
+		if (selectedRow != dataRows) newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*(selectedRow+1)), rowSize*(dataRows-(selectedRow+1))), rowSize*(selectedRow+1));
+	}
+	else {
+		// Start until before selected row.
+		if (selectedRow > 0) newData.set(new Uint8Array(rawData.buffer, dataOffset, rowSize*selectedRow));
+		// After selected row until before target row.
+		newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*(selectedRow+1)), rowSize*(targetRow - (selectedRow+1))), rowSize*selectedRow);
+		// Selected row.
+		newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*selectedRow), rowSize), rowSize*(targetRow-1));
+		// Target row until end.
+		if (targetRow != dataRows) newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*targetRow), rowSize*(dataRows-targetRow)), rowSize*targetRow);
+	}
+	new Uint8Array(rawData.buffer, dataOffset, dataRows * rowSize).set(newData);
+}
+
+function swapWeapons(e) {
+	var prompt = document.createElement('div');
+	prompt.appendChild(makeSpan('','Swap with weapon #'));
+	// Swap is zero-based
+	prompt.appendChild(makeInput('smallValue', 'number', 0, 0, false, 0, weaponTotalWeapons[saveVer]-1, true));
+	prompt.lastChild.value = 0;
+	prompt.appendChild(makeButton('', 'Swap', e.target.offset, performWeaponSwap, prompt, prompt.lastChild));
+	prompt.appendChild(makeButton('', 'Cancel', 0, removePrompt, prompt));
+	e.target.parentNode.appendChild(prompt);
+}
+
+function performWeaponSwap(e) {
+	var offsetA, offsetB;
+	if (e.target.promptValue.checkValidity()) {
+		offsetA = e.target.offset;
+		offsetB = weaponsOffset[saveVer] + (selectedWeapons * (weaponTotalWeapons[saveVer] * weaponTotalSize[saveVer])) + (Number(e.target.promptValue.value) * weaponTotalSize[saveVer]);
+		if (offsetA != offsetB) {
+			dataSwap(offsetA, offsetB, weaponTotalSize[saveVer]);
+			e.target.promptElement.parentNode.removeChild(e.target.promptElement);
+			if (debug) loadAllValues();
+			else {
+				// Invalidate cache
+				weaponEmptyWeapons[selectedWeapons] = undefined;
+				createUI();
+			}
+		}
+	}
+}
+
+function insertWeapon(e) {
+	var prompt = document.createElement('div');
+	prompt.appendChild(makeSpan('','Insert before weapon #'));
+	// Zero-based but allow weaponTotalWeapons to bump something to the end of the list
+	prompt.appendChild(makeInput('smallValue', 'number', 0, 0, false, 0, weaponTotalWeapons[saveVer], true));
+	prompt.lastChild.value = 0;
+	prompt.appendChild(makeButton('', 'Insert', e.target.offset, performWeaponInsert, prompt, prompt.lastChild, e.target.extraData));
+	prompt.appendChild(makeButton('', 'Cancel', 0, removePrompt, prompt));
+	e.target.parentNode.appendChild(prompt);
+}
+
+function performWeaponInsert(e) {
+	var selectedRow, targetRow;
+	if (e.target.promptValue.checkValidity()) {
+		selectedRow = e.target.extraData;
+		targetRow = Number(e.target.promptValue.value);
+		if (selectedRow != targetRow) {
+			dataInsert(selectedRow, targetRow, weaponsOffset[saveVer] + (selectedWeapons * (weaponTotalWeapons[saveVer] * weaponTotalSize[saveVer])), weaponTotalWeapons[saveVer], weaponTotalSize[saveVer]);
+			e.target.promptElement.parentNode.removeChild(e.target.promptElement);
+			if (debug) loadAllValues();
+			else {
+				// Invalidate cache
+				weaponEmptyWeapons[selectedWeapons] = undefined;
+				createUI();
+			}
+		}
+	}
+}
+
+function addWeapon(e) {
+	var i;
+	for (i = 0; i < weaponTotalWeapons[saveVer]; i++) {
+		if (weaponEmptyWeapons[selectedWeapons][i] == 0) {
+			weaponEmptyWeapons[selectedWeapons][i] = 1;
+			break;
+		}
+	}
+	// No space found
+	if (i == weaponTotalWeapons[saveVer]) {
+		var prompt = document.createElement('div');
+		prompt.appendChild(makeSpan('','No empty space found.'));
+		prompt.appendChild(makeButton('', 'OK', 0, removePrompt, prompt));
+		e.target.parentNode.appendChild(prompt);	
+	}
+	else {
+		createUI();
+	}
+}
+
+function removePrompt(e) {
+	e.target.promptElement.parentNode.removeChild(e.target.promptElement);
+}
+
+function experienceTable() {
+	var i, result, styles, wrapSize, wrapPoints;
+
+	styles = document.createElement('style');
+	styles.innerText = `
+span.note:hover span.experience { display: grid; grid-template-columns: repeat(18, auto); }
+span.note:hover span.experience span { padding-right: 3px; }
+span.note:hover span.experience span.header { font-weight: bold; justify-self: start; }
+span.note:hover span.experience span:nth-child(2n+2) { text-align: right; padding-left: 10px; font-weight: bold; }
+	`;
+
+	result = makeSpan('note gridSpan','[note]');
+	result.appendChild(styles);
+	result.appendChild(makeSpan('experience', ''));
+	result.lastChild.appendChild(makeSpan('header gridSpan', 'Experience Thresholds'));
+	wrapSize = 30;
+	wrapPoints = [];
+	for (i = 0; i < 9; i++) {
+		wrapPoints.push(i*wrapSize);
+	}
+	for (i = 0; i < wrapSize; i++) {
+
+		result.lastChild.appendChild(makeSpan('', (i+wrapPoints[0]+1)+':'));  result.lastChild.appendChild(makeSpan('', experience[i+wrapPoints[0]]));
+		result.lastChild.appendChild(makeSpan('', (i+wrapPoints[1]+1)+':'));  result.lastChild.appendChild(makeSpan('', experience[i+wrapPoints[1]]));
+		result.lastChild.appendChild(makeSpan('', (i+wrapPoints[2]+1)+':'));  result.lastChild.appendChild(makeSpan('', experience[i+wrapPoints[2]]));
+		result.lastChild.appendChild(makeSpan('', (i+wrapPoints[3]+1)+':'));  result.lastChild.appendChild(makeSpan('', experience[i+wrapPoints[3]]));
+		result.lastChild.appendChild(makeSpan('', (i+wrapPoints[4]+1)+':'));  result.lastChild.appendChild(makeSpan('', experience[i+wrapPoints[4]]));
+		result.lastChild.appendChild(makeSpan('', (i+wrapPoints[5]+1)+':'));  result.lastChild.appendChild(makeSpan('', experience[i+wrapPoints[5]]));
+		result.lastChild.appendChild(makeSpan('', (i+wrapPoints[6]+1)+':'));  result.lastChild.appendChild(makeSpan('', experience[i+wrapPoints[6]]));
+		result.lastChild.appendChild(makeSpan('', (i+wrapPoints[7]+1)+':'));  result.lastChild.appendChild(makeSpan('', experience[i+wrapPoints[7]]));
+		if (i < (255%wrapSize)){
+			result.lastChild.appendChild(makeSpan('', (i+wrapPoints[8]+1)+':'));  result.lastChild.appendChild(makeSpan('', experience[i+wrapPoints[8]]));
+		}
+		else {
+			result.lastChild.appendChild(makeSpan('', ''));     result.lastChild.appendChild(makeSpan('', ''));
+		}
+	}
+	return result;
+}
+
+function updateWarnings(value, elements) {
+	var i, element;
+	for (i = 0; element = elements[i]; i++) {
+		element.classList.remove('warning');
+		if (i >= value) element.classList.add('warning');
+	}
+}
+
+function makeSpan(className, innerHTML, extraStyles, extraData) {
+	var result = document.createElement('span');
+	if (className !== undefined) result.className = className;
+	if (innerHTML !== undefined) result.innerHTML = innerHTML;
+	if (extraStyles !== undefined) result.style = extraStyles;
+	if (extraData !== undefined) result.extraData = extraData;
+	return result;
+}
+
+function makeButton(className, innerHTML, offset, action, promptElement, promptValue, extraData) {
+	var container = makeSpan('button', '');
+	if (className !== undefined) container.className = container.className + ' ' + className;
+	var result = document.createElement('button');
+	if (innerHTML !== undefined) result.innerHTML = innerHTML;
+	if (offset !== undefined) result.offset = offset;
+	if (typeof action === 'function') result.addEventListener('click', action, false);
+	if (promptElement !== undefined) result.promptElement = promptElement;
+	if (promptValue !== undefined) result.promptValue = promptValue;
+	if (extraData !== undefined) result.extraData = extraData;
+	container.appendChild(result);
+	return container;
+}
+
+function makeSelect(className, selectData, offset, dataType, callback, extraData) {
+	var result = document.createElement('select');
+	if (className !== undefined) result.className = className;
+	result.appendChild(selectData.dom.cloneNode(true));
+	result.offset = offset;
+	result.dataType = dataType;
+	result.array = selectData.array;
+	if (result.array.length == 1) result.disabled = true;
+	if (typeof callback === 'function') result._callback = callback;
+	if (extraData) result.extraData = extraData;
+	editorFields.push(result);
+	return result;
+}
+
+function makeCheckbox(className, offset, dataType, callback, value, modifier, disabled, checked) {
+	var result = document.createElement('input');
+	if (className !== undefined) result.className = className;
+	result.type = 'checkbox';
+	result.offset = offset;
+	result.dataType = dataType;
+	if (typeof callback === 'function') result._callback = callback;
+	if (typeof value === 'number') result.value = value;
+	if (modifier !== undefined) result.extraData = modifier;
+	if (disabled === true) result.disabled = true;
+	if (checked === true) result.checked = true;
+	editorFields.push(result);
+	return result;
+}
+
+function makeInput(className, type, offset, dataType, callback, min, max, required, modifyMode, modifier, disabled, decimal) {
+	var result = document.createElement('input');
+	if (className !== undefined) result.className = className;
+	result.type = type;
+	if (type = 'time') result.step = 1;
+	result.offset = offset;
+	result.dataType = dataType;
+	if (typeof callback === 'function') result._callback = callback;
+	if ((typeof min === 'number') || (typeof min === 'string')) result.min = min;
+	if ((typeof max === 'number') || (typeof max === 'string')) result.max = max;
+	if (required === true) result.required = true;
+	if (modifyMode == modSpecial) {
+		result.extraData = modifier;
+	}
+	else if ((typeof modifyMode === 'number') && (typeof modifier === 'number')) {
+		result.modifyMode = modifyMode;
+		result.modifier = modifier;
+	}
+	if (disabled === true) result.disabled = true;
+	if (typeof decimal === 'number') result.step = decimal;
+	editorFields.push(result);
+	return result;
+}
+
+function addPageButton(text, disabled, selected) {
+	var result = document.createElement('button');
+	result.type = 'button';
+	result.value = pageButtons.length;
+	result.innerText = text;
+	if (disabled) result.disabled = disabled;
+	if (selected) {
+		result.className = 'selected';
+		selectedPage = Number(result.value);
+	}
+	global.firstElementChild.appendChild(result);
+	pageButtons.push(result);
+	return Number(result.value);
+}
+
+function addSubPageButton(text, value, selected) {
+	var result = document.createElement('button');
+	result.type = 'button';
+	result.value = value;
+	result.innerText = text;
+	result.addEventListener('click', updateSubPage, false);
+	if (selected) result.className = 'selected';
+	selector.appendChild(result);
+	selector.className = 'active';
+	return result;
+}
+
+function updateSubPage(e) {
+	var i, workData, oldBaseOffset, newBaseOffset, difference;
+
+	switch (selectedPage) {
+	case pageCharacters:
+		break;
+	case pageWeapons:
+		selector.querySelector('[value="' + selectedWeapons + '"]').classList.remove('selected');
+		oldBaseOffset = selectedWeapons * (weaponTotalWeapons[saveVer] * weaponTotalSize[saveVer]);
+
+		selectedWeapons = e.target.value;
+
+		selector.querySelector('[value="' + selectedWeapons + '"]').classList.add('selected');
+		newBaseOffset = selectedWeapons * (weaponTotalWeapons[saveVer] * weaponTotalSize[saveVer]);
+
+		// Replacing values without reloading UI only works if all weapons loaded. (Debug Mode)
+		if (!debug) {
+			createUI();
+		}
+		else {
+			difference = newBaseOffset - oldBaseOffset
+			for (let field of editorFields) if (field.parentNode.id == "editor") field.offset = field.offset + difference;
+
+			if (debug) {
+				workData = editor.querySelectorAll('.debug');
+				for (i = 0; i < weaponTotalWeapons[saveVer]; i++)  {
+					workData[i].extraData = workData[i].extraData + difference;
+					workData[i].innerHTML = debugString(workData[i].extraData, weaponTotalSize[saveVer],
+					[0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1])
+				};
+			}
+		}
+		break;
+	}
+
+	loadAllValues();
+	//if (selectedPage == pageWeapons) updateWeaponsActualPower();
+}
+
+function buildSelectData(data) {
+	var i, j, element, entry;
+	var output = {};
+
+	output.dom = document.createDocumentFragment();
+	output.array = [];
+
+	j = 0;
+	for (i = 0; entry = data[i]; i++) {
+		if (entry[2] == 1) {
+			element = document.createElement('optgroup');
+			element.label = entry[0];
+			output.dom.appendChild(element);
+		}
+		else if (debug || entry[2] != 2) {
+			element = document.createElement('option');
+			if (debug) element.innerHTML = padString(Number(entry[1]).toString(16).toUpperCase(),'00') + ": " + entry[0];
+			else element.innerHTML = entry[0];
+			element.value = entry[1];
+			if (output.dom.lastChild &&
+				output.dom.lastChild.tagName.match(/optgroup/i)) output.dom.lastChild.appendChild(element);
+			else                                                 output.dom.appendChild(element);
+			output.array[entry[1]] = j;
+			j++;
+		}
+	}
+	return output;
+}
+
+function testDateInput() {
+	var test = document.createElement('input');
+	test.type = 'date';
+	if (test.type = 'date') {
+		test.type = 'time'
+		if (test.type = 'time') { return true; }
+		else { return false; }
+	}
+	else { return false; }
+}
+
+function loadAllValues() {
+	for (let field of globalFields) loadValue(field);
+	for (let field of editorFields) loadValue(field);
+}
+
+function loadValue(target) {
+	var rawValue;
+	switch(target.dataType) {
+	case custom:
+		target._callback(callbackCustomLoad, target);
+		break;
+	case uint8:
+		rawValue = rawData.getUint8(target.offset);
+		target.value = rawValue;
+		break;
+	case uint16:
+		rawValue = rawData.getUint16(target.offset, LE);
+		target.value = rawValue;
+		break;
+	case uint32:
+		rawValue = rawData.getUint32(target.offset, LE);
+		target.value = rawValue;
+		break;
+	case uint64:
+		rawValue = rawData.getBigUint64(target.offset, LE);
+		target.value = rawValue;
+		break;
+	case float32:
+		rawValue = rawData.getFloat32(target.offset, LE);
+		target.value = rawValue.toFixed(1);
+		break;
+	case arrayIndexed8:
+		rawValue = rawData.getUint8(target.offset)
+		target.selectedIndex = target.array[rawValue];
+		break;
+	case arrayIndexed16:
+		rawValue = rawData.getUint16(target.offset, LE)
+		target.selectedIndex = target.array[rawValue];
+		break;
+	case arrayIndexed32:
+		rawValue = rawData.getUint32(target.offset, LE)
+		target.selectedIndex = target.array[rawValue];
+		break;
+	case checkbox:
+		rawValue = rawData.getUint8(target.offset);
+		if (rawValue == 1) target.checked = true;
+		else               target.checked = false;
+		break;
+	case text:
+		rawValue = new Uint8Array(rawData.buffer, target.offset, target.extraData);
+		target.value = decodeText.decode(rawValue).split('\u0000')[0];
+		break;
+	case bitmask:
+		rawValue = rawData.getUint8(target.offset + Math.floor(target.value/8))
+		if ((rawValue & (2**(target.value%8))) == (2**(target.value%8))) target.checked = true;
+		else                                                             target.checked = false;
+		break;
+	case debugToString:
+		rawValue = Array.from(new Uint8Array(rawData.buffer, target.offset, target.extraData));
+		for (var i = 0; i < rawValue.length; i++) rawValue[i] = padString(rawValue[i].toString(16), '00').toUpperCase();
+		target.innerText = rawValue.join(' ');
+		break;
+	}
+	if (target.modifyMode) {
+		switch(target.modifyMode) {
+		case modAdd:
+			target.value = rawValue + target.modifier;
+			break;
+		case modSubtract:
+			target.value = rawValue - target.modifier;
+			break;
+		case modMultiply:
+			target.value = rawValue * target.modifier;
+			break;
+		case modDivide:
+			target.value = rawValue / target.modifier;
+			break;
+		}
+	}
+	if ((target._callback) && (target.dataType != custom)) target._callback(callbackAfterLoad, target);
+}
+
+function valueChanged(e) {
+	var rawValue;
+	// Load existing value if newly entered value invalid
+	if (e.target.checkValidity()) {
+		// Empty strings are not considered invalid
+		// Check for .value too.
+		if (e.target.offset && e.target.dataType && e.target.value) {
+			if ((e.target._callback) && (e.target.dataType != custom)) e.target._callback(callbackBeforeSave, e.target);
+
+			if (e.target.modifyMode) {
+				switch(e.target.modifyMode) {
+				// Constants refer to loading, reverse action when saving
+				case modAdd:
+					rawValue = e.target.value - e.target.modifier;
+					break;
+				case modSubtract:
+					rawValue = e.target.value + e.target.modifier;
+					break;
+				case modMultiply:
+					rawValue = e.target.value / e.target.modifier;
+					break;
+				case modDivide:
+					rawValue = e.target.value * e.target.modifier;
+					break;
+				}
+			}
+			else { rawValue = e.target.value; }
+
+
+			switch(e.target.dataType) {
+			case custom:
+				e.target._callback(callbackCustomSave, e.target);
+				break;
+			case uint8:
+				rawData.setUint8(e.target.offset, rawValue);
+				break;
+			case uint16:
+				rawData.setUint16(e.target.offset, rawValue, LE);
+				break;
+			case uint32:
+				rawData.setUint32(e.target.offset, rawValue, LE);
+				break;
+			case uint64:
+				//Does not support .modifyMode due to having to use BigInt
+				rawValue = BigInt(e.target.value);
+				rawData.setBigUint64(e.target.offset, rawValue, LE);
+				break;
+			case float32:
+				rawData.setFloat32(e.target.offset, rawValue, LE);
+				break;
+			case arrayIndexed8:
+				rawData.setUint8(e.target.offset, Number(rawValue));
+				break;
+			case arrayIndexed16:
+				rawData.setUint16(e.target.offset, Number(rawValue), LE);
+				break;
+			case arrayIndexed32:
+				rawData.setUint32(e.target.offset, Number(rawValue), LE);
+				break;
+			case checkbox:
+				if (e.target.checked) rawData.setUint8(e.target.offset, 1);
+				else                  rawData.setUint8(e.target.offset, 0);
+				break;
+			case text:
+				encodeText.encodeInto(rawValue + '\u0000', new Uint8Array(rawData.buffer, e.target.offset, e.target.extraData));
+				break;
+			case bitmask:
+				// Set up mask
+				rawValue = 0xFF - (2**(e.target.value%8));
+				// Passthrough all bits except the one we're changing
+				rawValue = rawData.getUint8(e.target.offset + Math.floor(e.target.value/8)) & rawValue;
+				if (e.target.checked) rawValue += (2**(e.target.value%8))
+				rawData.setUint8(e.target.offset + Math.floor(e.target.value/8), rawValue);
+				break;
+			}
+		}
+		if ((e.target._callback) && (e.target.dataType != custom)) e.target._callback(callbackAfterSave, e.target);
+	}
+}
+
+function debugString(start, length, warnings) {
+	var i, output;
+	var bytes = new Uint8Array(rawData.buffer, start, length);
+	output = '';
+	for (i = 0; i < length; i++) {
+		if (warnings[i] && bytes[i]) output += '<span class=warning>'
+		output += padString(bytes[i].toString(16), '00').toUpperCase() + ' ';
+		if (warnings[i] && bytes[i]) output += '</span>'
+	}
+	return output.trimEnd()
+}
+
+function loadData() {
+	characters = [
+	["Link",0],["Impa",7],["Zelda",1],["Mipha",3],
+	["Daruk",4],["Revali",5],["Urbosa",6],["Hestu",12],
+	["Sidon",8],["Yunobo",9],["Teba",10],["Riju",11],
+	["Master Kohga",14],["King Rhoam",2],["Great Fairies",13],["Monk Maz Koshia",15],
+	["Terrako",16],["Calamity Ganon",17],["Battle-Tested Guardian",18],["Purah & Robbie",19],["Sooga",20]];
+
+	materials = JSON.parse(`{
+	"fruit":[["Hearty Durian",0],["Palm Fruit",1],["Wildberry",2],["Hydromelon",3],
+	["Spicy Pepper",4],["Voltfruit",5],["Fleet-Lotus Seeds",6],["Mighty Bananas",164]],
+
+	"fungi":[["Big Hearty Truffle",7],["Hearty Truffle",8],["Endura Shroom",9],["Hylian Shroom",10],
+	["Stamella Shroom",11],["Chillshroom",12],["Sunshroom",13],["Zapshroom",14],
+	["Rushroom",15],["Razorshroom",16],["Ironshroom",17],["Silent Shroom",18]],
+
+	"plant":[["Big Hearty Radish",19],["Hearty Radish",20],["Endura Carrot",21],["Hyrule Herb",22],
+	["Swift Carrot",23],["Fortified Pumpkin",24],["Cool Safflina",25],["Warm Safflina",26],
+	["Electric Safflina",27],["Swift Violet",28],["Mighty Thistle",29],["Armoranth",30],
+	["Blue Nightshade",31],["Silent Princess",32],["Wood",146]],
+
+	"meat":[["Raw Gourmet Meat",33],["Raw Whole Bird",34],["Raw Prime Meat",35],["Raw Bird Thigh",36],
+	["Raw Meat",37],["Raw Bird Drumstick",38]],
+
+	"misc":[["Courser Bee Honey",39],["Hylian Rice",40],["Bird Egg",41],["Tabantha Wheat",42],
+	["Fresh Milk",43],["Acorn",44],["Chickaloo Tree Nut",45],["Cane Sugar",46],
+	["Goat Butter",47],["Goron Spice",48],["Rock Salt",49],["Monster Extract",50],
+	["Star Fragment",51]],
+
+	"seafood":[["Hearty Salmon",64],["Hearty Blueshell Snail",65],["Hearty Bass",66],["Hyrule Bass",67],
+	["Staminoka Bass",68],["Chillfin Trout",69],["Sizzlefin Trout",70],["Voltfin Trout",71],
+	["Stealthfin Trout",72],["Mighty Carp",73],["Armored Carp",74],["Sanke Carp",75],
+	["Mighty Porgy",76],["Armored Porgy",77],["Sneaky River Snail",78],["Razorclaw Crab",79],
+	["Ironshell Crab",80],["Bright-Eyed Crab",81]],
+
+	"small":[["Fairy",82],["Winterwing Butterfly",83],["Summerwing Butterfly",84],["Thunderwing Butterfly",85],
+	["Smotherwing Butterfly",86],["Cold Darner",87],["Warm Darner",88],["Electric Darner",89],
+	["Restless Cricket",90],["Bladed Rhino Beetle",91],["Rugged Rhino Beetle",92],["Energetic Rhino Beetle",93],
+	["Sunset Firefly",94],["Hot-Footed Frog",95],["Tireless Frog",96],["Hightail Lizard",97],
+	["Hearty Lizard",98],["Fireproof Lizard",99]],
+
+	"ore":[["Flint",100],["Amber",101],["Opal",102],["Luminous Stone",103],
+	["Topaz",104],["Ruby",105],["Sapphire",106],["Diamond",107]],
+
+	"monster":[["Bokoblin Horn",108],["Bokoblin Fang",109],["Bokoblin Guts",110],["Moblin Horn",111],
+	["Moblin Fang",112],["Moblin Guts",113],["Lizalfos Horn",114],["Lizalfos Talon",115],
+	["Lizalfos Tail",116],["Icy Lizalfos Tail",117],["Red Lizalfos Tail",118],["Yellow Lizalfos Tail",119],
+	["Lynel Horn",120],["Lynel Hoof",121],["Lynel Guts",122],["Chuchu Jelly",123],
+	["White Chuchu Jelly",124],["Red Chuchu Jelly",125],["Yellow Chuchu Jelly",126],["Keese Wing",127],
+	["Ice Keese Wing",128],["Fire Keese Wing",129],["Electric Keese Wing",130],["Keese Eyeball",131],
+	["Octorok Tentacle",132],["Octorok Eyeball",133],["Octo Balloon",134],["Molduga Fin",135],
+	["Molduga Guts",136],["Hinox Toenail",137],["Hinox Tooth",138],["Hinox Guts",139]],
+
+	"ancient":[["Ancient Screw",140],["Ancient Spring",141],["Ancient Gear",142],["Ancient Shaft",143],
+	["Ancient Core",144],["Giant Ancient Core",145],["Guardian Claw",165],["High-Yield Ancient Furnace",166],
+	["Robbie's Maintenance Oil",167],["Robbie's Machine Lubricant",168],["Robbie's Curing Agent",169]],
+
+	"trophy":[["Guardian Trophy",151],["Molduga Trophy",152],["Stone Talus Trophy",153],["Hinox Trophy",154],
+	["Lynel Trophy",155],["Moblin Trophy",156],["Wizzrobe Trophy",157],["Bokoblin Trophy",158],
+	["Lizalfos Trophy",159],["Chuchu Trophy",160],["Keese Trophy",161],["Octorok Trophy",162],
+	["Stone Pebblit Trophy",163],["Report: Monster Ecology",170],["Report: Relic Analysis",171],["Report: Battle Records",172],
+	["Report: Material Properties",173],["Report: Vicious Monsters",174],["Report: Hidden Battles",175]],
+
+	"special":[["Korok Seed",147],["Terrako Component",149],["Ethereal Stone",150]],
+
+	"debug":[["Material 52",52],["Material 53",53],["Material 54",54],["Material 55",55],
+	["Material 56",56],["Material 57",57],["Material 58",58],["Material 59",59],
+	["Material 60",60],["Material 61",61],["Material 62",62],["Material 63",63],
+	["Material 148",148],["Material 176",176],["Material 177",177],["Material 178",178],
+	["Material 189",179],["Material 180",180],["Material 181",181],["Material 182",182],
+	["Material 183",183],["Material 184",184],["Material 180",185],["Material 186",186],
+	["Material 187",187],["Material 188",188],["Material 199",189],["Material 195",190],
+	["Material 191",191],["Material 192",192],["Material 193",193],["Material 194",194],
+	["Material 190",195],["Material 196",196],["Material 197",197],["Material 198",198]]
+	}`);
+
+	weapons = JSON.parse(`{
+	"type":[["[Blank]",0],
+	["Link — One-Handed Weapon",999,1,0],
+	["Tree Branch",1],["Soup Ladle",2],["Traveler's Sword",3],["Soldier's Broadsword",4],
+	["Knight's Broadsword",5],["Royal Broadsword",6],["Forest Dweller's Sword",7],["Zora Sword",8],
+	["Feathered Edge",9],["Ancient Short Sword [Broken]",10],["Royal Guard's Sword",11],["Boko Club",12],
+	["Spiked Boko Club",13],["Dragonbone Boko Club",14],["Lizal Boomerang",15],["Lizal Forked Boomerang",16],
+	["Lizal Tri-Boomerang",17],["Guardian Sword",18],["Guardian Sword++",19],["Guardian Sword++",20],
+	["Lynel Sword",21],["Mighty Lynel Sword",22],["Savage Lynel Sword",23],["Boomerang",24],
+	["Spring-Loaded Hammer [Broken]",25],["Bokoblin Arm",26],["Lizalfos Arm",27],["Master Sword",28],
+	["Training Sword",29],["Lucky Ladle",30],["Prototype Ancient Short Sword",31],
+	["0020",32,2],["0021",33,2],["0022",34,2],["0023",35,2],["0024",36,2],["0025",37,2],["0026",38,2],["0027",39,2],["0028",40,2],["0029",41,2],["002A",42,2],["002B",43,2],["002C",44,2],["002D",45,2],["002E",46,2],["002F",47,2],["0030",48,2],["0031",49,2],["0032",50,2],["0033",51,2],
+
+	["Link — Two-Handed Weapon",999,1,0],
+	["Farming Hoe",52],["Boat Oar",53],["Iron Sledgehammer",54],["Woodcutter's Axe",55],
+	["Double Axe",56],["Giant Boomerang [Broken]",57],["Traveler's Claymore",58],["Zora Longsword",59],
+	["Gerudo Claymore",60],["Eightfold Longblade",61],["Edge of Duality",62],["Ancient Bladesaw [Broken]",63],
+	["Royal Guard's Claymore",64],["Boko Bat",65],["Spiked Boko Bat",66],["Dragonbone Boko Bat",67],
+	["Moblin Club",68],["Spiked Moblin Club",69],["Dragonbone Moblin Club",70],["Ancient Battle Axe",71],
+	["Ancient Battle Axe+",72],["Ancient Battle Axe++",73],["Lynel Crusher",74],["Mighty Lynel Crusher",75],
+	["Savage Lynel Crusher",76],["Windcleaver",77],["Moblin Arm",78],
+	["004F",79,2],["0050",80,2],["0051",81,2],["0052",82,2],["0053",83,2],["0054",84,2],["0055",85,2],["0056",86,2],["0057",87,2],["0058",88,2],["0059",89,2],["005A",90,2],["005B",91,2],["005C",92,2],["005D",93,2],["005E",94,2],["005F",95,2],["0060",96,2],["0061",97,2],["0062",98,2],["0063",99,2],["0064",100,2],
+
+	["Link — Spear",999,1,0],
+	["Wooden Mop",101],["Farmer's Pitchfork",102],["Throwing Spear",103],["Soldier's Spear",104],
+	["Knight's Halberd",105],["Royal Halberd",106],["Forest Dweller's Spear",107],["Drillshaft",108],
+	["Feathered Spear",109],["Gerudo Spear",110],["Serpentine Spear",111],["Ancient Spear [Broken]",112],
+	["Royal Guard's Spear",113],["Boko Spear",114],["Spiked Boko Spear",115],["Dragonbone Boko Spear",116],
+	["Moblin Spear",117],["Spiked Moblin Spear",118],["Dragonbone Moblin Spear",119],["Lizal Spear",120],
+	["Enhanced Lizal Spear",121],["Forked Lizal Spear",122],["Guardian Spear",123],["Guardian Spear+",124],
+	["Guardian Spear++",125],["Lynel Spear",126],["Mighty Lynel Spear",127],["Savage Lynel Spear",128],
+	["0081",129,2],["0082",130,2],["0083",131,2],["0084",132,2],["0085",133,2],["0086",134,2],["0087",135,2],["0088",136,2],["0089",137,2],["008A",138,2],["008B",139,2],["008C",140,2],["008D",141,2],["008E",142,2],["008F",143,2],["0090",144,2],["0091",145,2],["0092",146,2],["0093",147,2],["0094",148,2],["0095",149,2],["0096",150,2],["0097",151,2],["0098",152,2],["0099",153,2],["009A",154,2],["009B",155,2],["009C",156,2],["009D",157,2],["009E",158,2],["009F",159,2],["00A0",160,2],["00A1",161,2],["00A2",162,2],["00A3",163,2],["00A4",164,2],["00A5",165,2],["00A6",166,2],["00A7",167,2],["00A8",168,2],["00A9",169,2],["00AA",170,2],
+
+	["Link — Flail",999,1,0],
+	["Guardian Flail",351],["Ancient Bladed Flail",352],["Fortified Flail",353],["0162",354,2],["0163",355,2],["0164",356,2],["0165",357,2],["0166",358,2],["0167",359,2],["0168",360,2],
+
+	["Impa",999,1,7],
+	["Kakariko Kodachi",241],["Faithful Kodachi",242],["Devoted Kodachi",243],["00F4",244,2],["00F5",245,2],["00F6",246,2],["00F7",247,2],["00F8",248,2],["00F9",249,2],["00FA",250,2],
+
+	["Zelda — Sheikah Slate",999,1,1],
+	["Ancient Memory Part",171],["Ancient Power Boost",172],["Ancient Overclock Unit",173],["00AE",174,2],["00AF",175,2],["00B0",176,2],["00B1",177,2],["00B2",178,2],["00B3",179,2],["00B4",180,2],
+
+	["Zelda — Bow of Light",999,1,1],
+	["Sacred Bow",181],["Sealing Bow",182],["Bow of Light",183],["00B8",184,2],["00B9",185,2],["00BA",186,2],["00BB",187,2],["00BC",188,2],["00BD",189,2],["00BE",190,2],
+
+	["Zelda — Master Cycle",999,1,1],
+	["Master Cycle",361],["Master Cycle Hunter",362],["Master Cycle Sentinel",363],["016C",364,2],["016D",365,2],["016E",366,2],["016F",367,2],["0170",368,2],["0171",369,2],["0172",370,2],
+
+	["Mipha",999,1,3],
+	["Traveler's Spear",201],["Zora Spear",202],["Lightscale Trident",203],["Lightscale Trident [Starter]",204],["Serene Champion's Spear",205],["00CE",206,2],["00CF",207,2],["00D0",208,2],["00D1",209,2],["00D2",210,2],
+
+	["Daruk",999,1,4],
+	["Cobble Crusher",211],["Stone Smasher",212],["Boulder Breaker",213],["Boulder Breaker [Starter]",214],["Steadfast Champion's Greatsword",215],["00D8",216,2],["00D9",217,2],["00DA",218,2],["00DB",219,2],["00DC",220,2],
+
+	["Revali",999,1,5],
+	["Traveler's Bow",221],["Soldier's Bow",222],["Great Eagle Bow",223],["Great Eagle Bow [Starter]",224],["Soaring Champion's Bow",225],["00E2",226,2],["00E3",227,2],["00E4",228,2],["00E5",229,2],["00E6",230,2],
+
+	["Urbosa",999,1,6],
+	["Gerudo Scimitar",231],["Moonlight Scimitar",232],["Scimitar of the Seven",233],["Scimitar of the Seven [Starter]",234],["Nimble Champion's Sword",235],["00EC",236,2],["00ED",237,2],["00EE",238,2],["00EF",239,2],["00F0",240,2],
+
+	["Hestu",999,1,12],
+	["Maracas",291],["Shaka Maracas",292],["Shakalaka Maracas",293],["0126",294,2],["0127",295,2],["0128",296,2],["0129",297,2],["012A",298,2],["012B",299,2],["012C",300,2],
+
+	["Sidon",999,1,8],
+	["Fishing Harpoon",251],["Silverscale Spear",252],["Ceremonial Trident",253],["Fishing Harpoon [Starter]",254],["Gallant Hero's Spear",255],["0100",256,2],["0101",257,2],["0102",258,2],["0103",259,2],["0104",260,2],
+
+	["Yunobo",999,1,9],
+	["Raw Rock Roast",261],["Medium-Rare Rock Roast",262],["Rock Roast Flambé",263],["Raw Rock Roast [Starter]",264],["Stalwart Hero's Feast",265],["010A",266,2],["010B",267,2],["010C",268,2],["010D",269,2],["010E",270,2],
+
+	["Teba",999,1,10],
+	["Wooden Bow",271],["Swallow Bow",272],["Falcon Bow",273],["Wooden Bow [Starter]",274],["Swift Hero's Bow",275],["0114",276,2],["0115",277,2],["0116",278,2],["0117",279,2],["0118",280,2],
+
+	["Riju",999,1,11],
+	["Gerudo Bridle",281],["Starlight Bridle",282],["Bridle of the Seven",283],["Gerudo Bridle [Starter]",284],["Thunderous Hero's Bridle",285],["011E",286,2],["011F",287,2],["0120",288,2],["0121",289,2],["0122",290,2],
+
+	["Master Kohga",999,1,14],
+	["Eightfold Blade",311],["Vicious Sickle",312],["Demon Carver",313],["013A",314,2],["013B",315,2],["013C",316,2],["013D",317,2],["013E",318,2],["013F",319,2],["0140",320,2],
+
+	["King Rhoam",999,1,2],
+	["Soldier's Claymore",191],["Knight's Claymore",192],["Royal Claymore",193],["00C2",194,2],["00C3",195,2],["00C4",196,2],["00C5",197,2],["00C6",198,2],["00C7",199,2],["00C8",200,2],
+
+	["Great Fairies",999,1,13],
+	["Dazzling Bangles",301],["Luxurious Bangles",302],["Extravagant Bangles",303],["0130",304,2],["0131",305,2],["0132",306,2],["0133",307,2],["0134",308,2],["0135",309,2],["0136",310,2],
+
+	["Monk Maz Koshia",999,1,15],
+	["Monk's Bands",321],["Bands of Enlightenment",322],["Bands of Truth",323],["0144",324,2],["0145",325,2],["0146",326,2],["0147",327,2],["0148",328,2],["0149",329,2],["014A",330,2],
+
+	["Terrako",999,1,16],
+	["Blessed Screw",331],["Benevolent Spring",332],["Gear of the Protector",333],["014E",334,2],["014F",335,2],["0150",336,2],["0151",337,2],["0152",338,2],["0153",339,2],["0154",340,2],
+
+	["Calamity Ganon",999,1,17],
+	["Cursed Bone Shard",341],["Malevolent Spine",342],["Heart of Annihilation",343],["0158",344,2],["0159",345,2],["015A",346,2],["015B",347,2],["015C",348,2],["015D",349,2],["015E",350,2],
+
+	["Battle-Tested Guardian",999,1,18],
+	["Battle-Tested Screw",371],["Battle-Tested Spring",372],["Battle-Tested Gear",373],["0176",374,2],["0177",375,2],["0178",376,2],["0179",377,2],["017A",378,2],["017B",379,2],["017C",380,2],
+
+	["Purah & Robbie",999,1,19],
+	["Prototype Sheikah Arms",381],["Refined Sheikah Arms",382],["Ultimate Sheikah Arms",383],["0176",384,2],["0177",385,2],["0178",386,2],["0179",387,2],["017A",388,2],["017B",389,2],["017C",390,2],
+
+	["Sooga",999,1,20],
+	["Swords of Ferocity",391],["Swords of Devotion",392],["Swords of Valiance",393],["Swords of Ferocity [Starter]",394],["0177",395,2],["0178",396,2],["0179",397,2],["017A",398,2],["017B",399,2],["017C",400,2]],
+
+	"seal":[
+["[Blank]",0],
+["Damage Reflected When Guarding",1],
+["Attack Speed",2],
+["Attack Speed+",3],
+["Attack Speed++",4],
+["Attack Range",5],
+["Attack Range+",6],
+["Attack Range++",7],
+["Chance to KO Weak Enemies",8],
+["Perfect-Dodge Timing Window",9],
+["Perfect-Dodge Timing Window+",10],
+["Perfect-Dodge Timing Window++",11],
+["Special-Attack Charge Rate",12],
+["Special-Attack Charge Rate+",13],
+["Special-Attack Charge Rate++",14],
+["Chance to Automatically Guard",15],
+["Perfect-Guard Chance When Guarding",16],
+["aaPierce Enemy's Guard with Midair Attacks",17],
+["Resistance to All Status Effects",18],
+["Chance of Landing Shockwave",19],
+["Damage to Locked-On Target",20],
+["Auto-Critical Hit after Combos",21],
+["Battle EXP",22],
+["Battle EXP+",23],
+["Battle EXP++",24],
+["Fusion Material EXP",25],
+["Fusion Material EXP+",26],
+["Fusion Material EXP++",27],
+["High-Resell Weapon",28],
+["High-Resell Weapon+",29],
+["High-Resell Weapon++",30],
+["Detects Nearby Koroks",31],
+["Detects Nearby Chests",32],
+["Improves Quality of Found Weapons",33],
+["Increased Blupee Encounters",34],
+["Monster-Part Drop Rate",35],
+["Monster-Part Drop Rate+",36],
+["Monster-Part Drop Rate++",37],
+["Battlefield-Specific Material Drop Rate",38],
+["Battlefield-Specific Material Drop Rate+",39],
+["Battlefield-Specific Material Drop Rate++",40],
+["Ancient-Part Drop Rate",41],
+["Ancient-Part Drop Rate+",42],
+["Ancient-Part Drop Rate++",43],
+["Rare-Material Drop Rate",44],
+["Mineral Drop Rate",45],
+["Material Drop Rate from Grass",46],
+["Material Drop Rate from Grass+",47],
+["Material Drop Rate from Grass++",48],
+["Sensor-Registered Material Drop Rate",49],
+["Damage to Foes with Status Effects",50],
+["Regular-Attack Damage",51],
+["Regular-Attack Damage+",52],
+["Regular-Attack Damage++",53],
+["Strong-Attack Damage",54],
+["Strong-Attack Damage+",55],
+["Strong-Attack Damage++",56],
+["Midair-Attack Damage",57],
+["Midair-Attack Damage+",58],
+["Midair-Attack Damage++",59],
+["Dash-Attack Damage",60],
+["Dash-Attack Damage+",61],
+["Dash-Attack Damage++",62],
+["Flurry Rush Damage",63],
+["Flurry Rush Damage+",64],
+["Flurry Rush Damage++",65],
+["Damage to Midair Enemies",66],
+["Damage to Midair Enemies+",67],
+["Damage to Midair Enemies++",68],
+["Special-Attack Damage",69],
+["Special-Attack Damage+",70],
+["Special-Attack Damage++",71],
+["Damage at Full Hearts",72],
+["Damage at Full Hearts+",73],
+["Damage at Full Hearts++",74],
+["Damage at #% Hearts or Less",75],
+["Damage at #% Hearts or Less+",76],
+["Damage at #% Hearts or Less++",77],
+["Damage per # KOs",78],
+["Damage per # KOs+",79],
+["Damage per # KOs++",80],
+["Heal a Percentage of Damage Dealt",81],
+["Heal by Defeating Enemies",82],
+["Healing-Item Drop Rate",83],
+["Healing-Item Drop Rate+",84],
+["Healing-Item Drop Rate++",85],
+["Healing-Item Effect",86],
+["Healing-Item Effect+",87],
+["Healing-Item Effect++",88],
+["Damage from Enemies",89],
+["Damage from Enemies+",90],
+["aaDamage from Enemies++",91],
+["Reduced Damage from Lightning",92],
+["Reduced Damage from Fire",93],
+["Reduced Damage from Ice",94],
+["95",95],
+["96",96],
+["97",97],
+["98",98],
+["99",99],
+["100",100]]
+	}`);
+
+/*
+	experience = [0,525,1076,1654,3139,4689,6303,
+	8979,11757,14638,18734,22970,27348,33094,
+	39019,45124,52749,60593,68654,78390,88382,
+	98630,110705,123075,135740,150385,165363,180675,
+	198120,215936,234124,254599,275483,296777,320512,
+	344695,369325,396549,424260,452457,483432,514932,
+	546957,579507,612582,646182,680307,714957,750132,
+	785832,822057,858807,896082,933882,972207,1011057,
+	1050432,1090332,1130757,1171707,1213182,1255182,1297707,
+	1340757,1384332,1428432,1473057,1518207,1563882,1610082,
+	1656807,1704057,1751832,1800132,1848957,1898307,1948182,
+	1998582,2049507,2100957,2152932,2205432,2258457,2312007,
+	2366082,2420682,2475807,2531457,2587632,2644332,2701557,
+	2759307,2817582,2876382,2935707,2995557,3055932,3116832,
+	3178257,3240207,3302157,3364107,3426057,3488007,3549957,
+	3611907,3673857,3735807,3797757,3859707,3921657,3983607,
+	4045557,4107507,4169457,4231407,4293357,4355307,4417257,
+	4479207,4541157,4603107,4665057,4727007,4788957,4850907,
+	4912857,4974807,5036757,5098707,5160657,5222607,5284557,
+	5346507,5408457,5470407,5532357,5594307,5656257,5718207,
+	5780157,5842107,5904057,5966007,6027957,6089907,6151857,
+	6213807,6275757,6337707,6399657,6461607,6523557,6585507,
+	6647457,6709407,6771357,6833307,6895257,6957207,7019157,
+	7081107,7143057,7205007,7266957,7328907,7390857,7452807,
+	7514757,7576707,7638657,7700607,7762557,7824507,7886457,
+	7948407,8010357,8072307,8134257,8196207,8258157,8320107,
+	8382057,8444007,8505957,8567907,8629857,8691807,8753757,
+	8815707,8877657,8939607,9001557,9063507,9125457,9187407,
+	9249357,9311307,9373257,9435207,9497157,9559107,9621057,
+	9683007,9744957,9806907,9868857,9930807,9992757,10054707,
+	10116657,10178607,10240557,10302507,10364457,10426407,10488357,
+	10550307,10612257,10674207,10736157,10798107,10860057,10922007,
+	10983957,11045907,11107857,11169807,11231757,11293707,11355657,
+	11417607,11479557,11541507,11603457,11665407,11727357,11789307,
+	11851257,11913207,11975157,12037107,12099057,12161007,12222957,
+	12284907,12346857,12408807,12470757,12532707,12594657,12656607,
+	12718557,12780507,12842457]
+*/
+}
+
+// Pad a number by adding characters to the length then slicing from the left
+function padNumber(number, padString) {
+	if (number >= (10 ** padString.length)) {
+		return number.toString();
+	}
+	else if (number < 0) {
+		return '-' + (padString + (number * -1)).slice((padString.length * -1))
+	}
+	else {
+		return (padString + number).slice(((padString.length) * -1))
+	}
+}
+// Same but for strings
+function padString(text, padString) {
+	return (padString + text).slice((padString.length * -1))
+}
+		</script>
+	</body>
+</html>
