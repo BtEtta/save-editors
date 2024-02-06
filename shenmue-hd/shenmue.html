@@ -1,0 +1,1331 @@
+﻿<!doctype html>
+<html>
+	<head>
+		<title>Shenmue I Save Editor</title>
+		<style>
+body {
+	background-color: #222; color: #DDD;
+	font-family: sans-serif;
+	font-size: 8pt;
+}
+
+select, input, button {
+	background-color: #222;	color: #DDD;
+	border: 1px solid #DDD;
+}
+select[disabled], input[disabled], button.selected { background-color: #666; }
+input, select { padding-right: 0; }
+label { margin-right: 5px; }
+button {
+	margin-right: 2px;
+	border: 1px solid #DDD;
+	padding: 1px 5px;
+
+}
+#global button { font-size: 8pt; }
+#global button.selected { border: 1px dotted #DDD }
+#global button[disabled] { opacity: 50%; }
+
+header, article > div {
+	padding: 5px; margin: 5px;
+	border: 1px dotted #DDD;
+	display: flex; flex-wrap: wrap;
+}
+
+header { display: block; }
+
+header { align-items: center; }
+header > span#log {
+	display: inline-block;
+	padding-left: 50px;
+	flex: 1;
+}
+input[type="file"] { border: none; }
+
+#editor { align-items: start; }
+#editor > div,
+#editor > div.group > div {
+	margin: 0 20px 0 0;
+	flex: none;
+	display: grid;
+	grid-template-columns: auto auto;
+	align-items: center;
+}
+#editor > div.gridThree,
+#editor > div.group > div.gridThree {
+	grid-template-columns: auto auto auto;
+}
+
+#editor > div.gridFour,
+#editor > div.group > div.gridFour {
+	grid-template-columns: auto auto auto auto;
+}
+#editor > div.group {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: start
+}
+
+#editor span.header {
+	font-weight: bold;
+	white-space: nowrap;
+}
+#editor span.gridSpan {
+	grid-column: 1 / -1;
+	justify-self: center;
+}
+#global div > span,
+#editor div > span { padding: 0 5px; }
+
+article input,
+article select {
+	/*width: 150px;*/
+	padding-left: 3px;
+	margin: 2px 0 2px 0;
+	box-sizing: content-box;
+	font-size: 8pt;
+}
+article .smallValue { width: 50px; }
+article .mediumValue { width: 100px; }
+article [type="date"],
+article [type="time"] { width: auto; }
+article [type="checkbox"] { max-width: 15px; align-self: flex-end; }
+span.disabled { color: #888; }
+span.warning { color: #B33; }
+
+#editor div > * {
+	margin-right: 2px;
+}
+#editor div > :nth-child(odd) {
+	text-align: right;
+	padding-right: 3px;
+}
+#editor div[class^="grid"] > :nth-child(odd) {
+	text-align: left;
+	padding-right: 0;
+}
+#editor div.gridThree > :nth-child(3n+1),
+#editor div.gridFour > :nth-child(4n+1) {
+	text-align: right;
+	padding-right: 3px;
+}
+
+#editor select,
+#editor option { padding: 0 3px 0 0; }
+#editor optgroup { padding: 0; background-color: #DDD; color: #222; }
+
+#editor div > span.note {
+	font-size: 0.8em;
+	vertical-align: top;
+	z-index: 9999;
+}
+#editor div > span.note > span { display: none; }
+#editor div > span.note:hover > span {
+	display: inline-block;
+	padding: 4px;
+	background-color: #FFA; color: #222;
+	border: 1px solid black;
+	position: absolute;
+	font-weight: normal;
+	min-width: 200px;
+	white-space: nowrap;
+}
+		</style>
+	</head>
+	<body>
+		<header>
+			<span>
+				<label>Choose file: <input type=file id=input autocomplete=off></label>
+				<button type=button id=save disabled autocomplete=off>Save Changes</button>
+			</span>
+			<span id=log>Shenmue I Save Editor</span>
+		</header>
+		<article>
+			<div id=global>
+				<div>
+					<label>Page:</label>
+				</div>
+			</div>
+			<div id=editor><span>ALWAYS REMEMBER TO BACKUP YOUR FILE – I accept no responsibily for any problems that occur from using this editor.</span></div>
+		</article>
+		<script>
+'use strict';
+
+// Data Type IDs
+const custom = 1;
+const uint8 = 2;
+const uint16 = 3;
+const uint32 = 4;
+const uint64 = 5;
+const float32 = 6
+const arrayIndexed8 = 7;
+const arrayIndexed16 = 8;
+const arrayIndexed32 = 9;
+const checkbox = 10;
+const text = 11;
+
+const callbackAfterLoad = 1;
+const callbackCustomLoad = 2;
+const callbackBeforeSave = 3;
+const callbackAfterSave = 4;
+const callbackCustomSave = 5;
+// Modifier Mode (when loading, will be reversed when saving)
+const modAdd = 1;
+const modSubtract = 2;
+const modMultiply = 3;
+const modDivide = 4;
+const modText = 5;
+
+// Store references to a few HTML elements
+var header = document.querySelector('header');
+var input = document.querySelector('#input');
+var save = document.querySelector('#save');
+var log = document.querySelector('#log'); // Used to test data validation fails during development
+var global = document.querySelector('#global');
+var editor = document.querySelector('#editor');
+
+// Desktop Safari sucks.
+const dateTimeSupport = testDateInput();
+
+var selectedPage = 0;
+var pageButtons = []
+var pageMoves = addPageButton('Moves', true, true);
+var pageStory = addPageButton('Story Items', true);
+var pageGacha = addPageButton('Gacha Items', true);
+var pageCassettes = addPageButton('Cassettes', true);
+var pageScores = addPageButton('Arcade Scores', true);
+// Only shows if date/time <input>s not supported by browser.
+var pageTime;
+if (!dateTimeSupport) pageTime = addPageButton('Date/Time', true);
+
+// For Testing
+const debug = 0;
+
+var editorFields;
+
+var fileName='';
+
+// File Size
+const fileSize = 40960;
+
+// Will contain the DataView for our ArrayBuffer
+var rawData;
+
+var decodeText = new TextDecoder();
+var encodeText = new TextEncoder();
+
+var selectData = {};
+var storyItems;
+var gachaItems;
+
+// Constants for little-endian/big-endian while manipulating the DataView
+const LE = true, BE = false;
+
+const checksumRangeStart = 0x2000;
+const checksumRangeLength = 0x1800;
+
+const checksumOffset = 0x760;
+
+const moneyOffset = 0x2018;
+const tokenOffset = 0x201C;
+
+const timeYearOffset = 0x748;
+const timeMonthOffset = 0x74A;
+const timeDayOffset = 0x74B;
+const timeHourOffset = 0x74C;
+const timeMinuteOffset = 0x74D;
+const timeSecondOffset = 0x74E;
+const timeWeekdayOffset = 0x74F;
+
+const storyItemOffset = 0x2251;
+
+const gachaItemOffset = 0x2350;
+
+const cassetteItemOffset = 0x2450;
+
+const handTrainingOffset = 0x2032;
+const handMoveOffset = 0x205A;
+const handCountOffset = 0x2082;
+const legTrainingOffset = 0x2084;
+const legMoveOffset = 0x20AC;
+const legCountOffset = 0x20D4;
+const throwTrainingOffset = 0x20D6;
+const throwMoveOffset = 0x20FE;
+const throwCountOffset = 0x2126;
+
+const scoresExciteQTEHighOffset1 = 0x2540
+const scoresExciteQTEHighOffset2 = 0x28BC
+const scoresExciteQTELastOffset = 0x2544
+
+const scoresYouDarts1HighOffset1 = 0x2548
+const scoresYouDarts1HighOffset2 = 0x28A8
+const scoresYouDarts1LastOffset = 0x254C
+
+const scoresQTETitleHighOffset1 = 0x2554
+const scoresQTETitleHighOffset2 = 0x28C0
+const scoresQTETitleLastOffset = 0x2558
+
+const scoresYouDarts2HighOffset1 = 0x2560
+const scoresYouDarts2HighOffset2 = 0x28AC
+const scoresYouDarts2LastOffset = 0x2564
+
+const scoresHarborDartsHighOffset1 = 0x2568
+const scoresHarborDartsHighOffset2 = 0x28B0
+const scoresHarborDartsLastOffset = 0x256C
+
+const scoresNeoDartsHighOffset1 = 0x2570
+const scoresNeoDartsHighOffset2 = 0x28B4
+const scoresNeoDartsLastOffset = 0x2574
+
+const scoresSpaceHarrierOffset = 0x25C0;
+const scoresHangOnOffset = 0x26B0;
+
+header.addEventListener('drop', loadFile, false);
+header.addEventListener('dragenter', handleDrag, false);
+header.addEventListener('dragover', handleDrag, false);
+
+input.addEventListener('change', loadFile, false);
+save.addEventListener('click', saveFile, false);
+global.addEventListener('click', changePage, true); //Capturing
+
+// Capture and save changes to values
+document.querySelector('article').addEventListener('input', valueChanged, true);
+
+loadData();
+
+function handleDrag(e) {
+	e.preventDefault();
+}
+
+// Called from a 'change' event on the file input
+// or 'drop' event on <header>
+function loadFile(e) {
+	var reader, file;
+
+	// Are we getting files from a drop event or <input type="file">
+	// Assumes if multiple files were selected we just want the first one.
+	if (e.dataTransfer && e.dataTransfer.files) {
+		e.preventDefault()
+		e.stopPropagation()
+		file = e.dataTransfer.files[0]
+	}
+	else if (e.target.files) {
+		file = e.target.files[0]
+	}
+
+	if (file) {
+
+		fileName = file.name;
+
+		// Create a FileReader and setup what happens when its loaded.
+		reader = new FileReader();
+		reader.onload = function (e) {
+			var contents = e.target.result;
+			var buffer = reader.result;
+
+      		// Keep DataView as a global variable because it's the laziest way.
+			rawData = new DataView(buffer);
+
+			// Skip to the code to parse the file
+			parseFile(rawData);
+		}
+
+		// Tell the browser to load the file as an ArrayBuffer triggering the above event when loaded.
+		reader.readAsArrayBuffer(file);
+	}
+}
+
+function parseFile() {
+	if (rawData.buffer.byteLength == fileSize) {
+		if (testChecksum()) {
+			toggleButtons(false);
+			createUI();
+		}
+		else {
+			toggleButtons(true);
+			editor.innerHTML = '<SPAN>CHECKSUM PROBLEM — FILE NOT LOADED</SPAN>';
+			editor.firstChild.addEventListener('click', function() { setChecksum(); parseFile(); }, false)
+		}
+	}
+	else {
+		toggleButtons(true);
+		editor.innerHTML = 'INCORRECT FILE SIZE — FILE NOT LOADED';
+	}
+}
+
+function saveFile() {
+	setChecksum();
+
+	// File() contructor takes an array of ArrayBuffer (or similar) objects.
+	var fileOutput = new File([rawData], fileName, { type: "application/octet-stream",});
+	var fileURL = URL.createObjectURL(fileOutput);
+
+	// Should just be able to set: location = fileURL;
+	// But WebKit/Blink don't use specified file name in this instance. Firefox works.
+	// Workaround uses 'download' property of anchor elements.
+	// Support for 'download' is still new (as of 2017) in WebKit.
+	var fileAnchor = document.createElement("a");
+	fileAnchor.style = "display: none";
+	fileAnchor.href = fileURL;
+	fileAnchor.download = fileName;
+
+	document.body.appendChild(fileAnchor);
+	fileAnchor.click();
+	document.body.removeChild(fileAnchor);
+
+	// No way to detect when blob: URL is no longer needed.
+	// On Edge, revokeObjectURL should be called only after
+	// a.click() has completed, at least on EdgeHTML 15.15048
+	// Completely arbitrary timing used.
+	setTimeout(function() { URL.revokeObjectURL(fileURL);}, 1000);
+}
+
+function changePage(e) {
+	if (e.target.tagName.match(/button/i) &&
+		!(e.target.disabled)) {
+		pageButtons[selectedPage].className = '';
+		selectedPage = Number(e.target.value);
+		pageButtons[selectedPage].className = 'selected';
+		createUI();
+	}
+}
+
+function toggleButtons(state) {
+	var i, button;
+	save.disabled = state;
+	for (i = 0; button = pageButtons[i]; i++) button.disabled = state;
+}
+
+function clearGlobals() {
+	while (pageButtons[pageButtons.length-1].nextElementSibling) {
+		global.firstElementChild.removeChild(pageButtons[pageButtons.length-1].nextElementSibling)
+	}
+}
+
+function createUI() {
+	editorFields = [];
+	var i, wrapCounter, wrapSize, pendingFields;
+
+	// Reset Editor
+	clearGlobals();
+	editor.innerHTML = '';
+
+	var handCount = rawData.getUint8(handCountOffset);
+	var legCount = rawData.getUint8(legCountOffset);
+	var throwCount = rawData.getUint8(throwCountOffset);
+
+	pendingFields = document.createDocumentFragment();
+	pendingFields.appendChild(makeSpan('', 'Money:'));
+	pendingFields.appendChild(makeInput('mediumValue', 'number', moneyOffset, uint32, false, 0, 999999, true));
+	pendingFields.appendChild(makeSpan('', 'Tokens:'));
+	pendingFields.appendChild(makeInput('mediumValue', 'number', tokenOffset, uint32, false, 0, 999999, true));
+	global.firstElementChild.appendChild(pendingFields);
+	if (dateTimeSupport) {
+		pendingFields = document.createDocumentFragment();
+		pendingFields.appendChild(makeSpan('', 'Date:'));
+		pendingFields.appendChild(makeInput('', 'date', timeYearOffset, custom, parseDate, '1986-12-03', '1987-04-14', true));
+		pendingFields.appendChild(makeSpan('', 'Time:'));
+		pendingFields.appendChild(makeInput('', 'time', timeHourOffset, custom, parseTime, false, false, true));
+		global.firstElementChild.appendChild(pendingFields);
+	}
+
+	switch (selectedPage) {
+	case pageMoves:
+		pendingFields = document.createElement('div');
+		pendingFields.appendChild(makeSpan('header gridSpan', 'Hand Moves'));
+		pendingFields.appendChild(makeSpan('gridSpan', ''));
+		pendingFields.appendChild(makeSpan('', 'Count'));
+		pendingFields.appendChild(makeInput('smallValue', 'number', handCountOffset, uint8, countChanged, 1, 17, true));
+		pendingFields.appendChild(makeSpan('', 'Move'));
+		pendingFields.appendChild(makeSpan('smallValue', 'Skill'));
+		for (i = 0; i < handCount; i++) {
+			pendingFields.appendChild(makeSelect('', selectData.hand, handMoveOffset + (i*2), arrayIndexed8));
+			pendingFields.appendChild(makeInput('smallValue', 'number', handTrainingOffset + (i*2), uint8, false, 0, 100, true));
+		}
+		editor.appendChild(pendingFields);
+
+		pendingFields = document.createElement('div');
+		pendingFields.appendChild(makeSpan('header gridSpan', 'Leg Moves'));
+		pendingFields.appendChild(makeSpan('gridSpan', ''));
+		pendingFields.appendChild(makeSpan('', 'Count'));
+		pendingFields.appendChild(makeInput('smallValue', 'number', legCountOffset, uint8, countChanged, 1, 15, true));
+		pendingFields.appendChild(makeSpan('', 'Move'));
+		pendingFields.appendChild(makeSpan('smallValue', 'Skill'));
+		for (i = 0; i < legCount; i++) {
+			pendingFields.appendChild(makeSelect('', selectData.leg, legMoveOffset + (i*2), arrayIndexed8));
+			pendingFields.appendChild(makeInput('smallValue', 'number', legTrainingOffset + (i*2), uint8, false, 0, 100, true));
+		}
+		editor.appendChild(pendingFields);
+
+		pendingFields = document.createElement('div');
+		pendingFields.appendChild(makeSpan('header gridSpan', 'Throw Moves'));
+		pendingFields.appendChild(makeSpan('gridSpan', ''));
+		pendingFields.appendChild(makeSpan('', 'Count'));
+		pendingFields.appendChild(makeInput('smallValue', 'number', throwCountOffset, uint8, countChanged, 1, 14, true));
+		pendingFields.appendChild(makeSpan('', 'Move'));
+		pendingFields.appendChild(makeSpan('smallValue', 'Skill'));
+		for (i = 0; i < throwCount; i++) {
+			pendingFields.appendChild(makeSelect('', selectData.throw, throwMoveOffset + (i*2), arrayIndexed8));
+			pendingFields.appendChild(makeInput('smallValue', 'number', throwTrainingOffset + (i*2), uint8, false, 0, 100, true));
+		}
+		editor.appendChild(pendingFields);
+		break;
+	case pageStory:
+		wrapCounter = 0;
+		wrapSize = 19;
+		for (i = 0; i < storyItems.length; i++) {
+			if (storyItems[i][1] < 999) {
+				if ((wrapCounter%wrapSize) == 0) {
+					editor.appendChild(pendingFields);
+					pendingFields = document.createElement('div');
+					pendingFields.appendChild(makeSpan('header gridSpan', 'Story Items ' + ((wrapCounter/wrapSize)+1)));
+					pendingFields.appendChild(makeSpan('gridSpan', ''));
+				}
+				wrapCounter++;
+				pendingFields.appendChild(makeSpan('', storyItems[i][0]));
+				pendingFields.appendChild(makeInput('smallValue', 'number', storyItemOffset+storyItems[i][1], uint8, false, 0, 255, true));
+			}
+		}
+		editor.appendChild(pendingFields);
+		break;
+	case pageGacha:
+		wrapCounter = 0;
+		wrapSize = 19;
+		for (i = 0; i < gachaItems.length; i++) {
+			if (gachaItems[i][1] < 999) {
+				if ((wrapCounter%wrapSize) == 0) {
+					editor.appendChild(pendingFields);
+					pendingFields = document.createElement('div');
+					pendingFields.appendChild(makeSpan('header gridSpan', 'Gacha Items ' + ((wrapCounter/wrapSize)+1)));
+					pendingFields.appendChild(makeSpan('gridSpan', ''));
+				}
+				wrapCounter++;
+				pendingFields.appendChild(makeSpan('', gachaItems[i][0]));
+				pendingFields.appendChild(makeInput('smallValue', 'number', gachaItemOffset+gachaItems[i][1], uint8, false, 0, 255, true));
+			}
+		}
+		editor.appendChild(pendingFields);
+		break;
+	case pageCassettes:
+		wrapCounter = 0;
+		wrapSize = 16;
+		for (i = 0; i < 32; i++) {
+			if ((wrapCounter%wrapSize) == 0) {
+				editor.appendChild(pendingFields);
+				pendingFields = document.createElement('div');
+				pendingFields.appendChild(makeSpan('header gridSpan', 'Cassettes ' + ((wrapCounter/wrapSize)+1)));
+				pendingFields.appendChild(makeSpan('gridSpan', ''));
+				pendingFields.appendChild(makeSpan('', 'Cassette'));
+				pendingFields.appendChild(makeSpan('smallValue', 'Quantity'));
+			}
+			wrapCounter++;
+			pendingFields.appendChild(makeSelect('', selectData.cassette, cassetteItemOffset + (i*2) + 1, arrayIndexed8));
+			pendingFields.appendChild(makeInput('smallValue', 'number', cassetteItemOffset + (i*2), uint8, false, 0, 255, true));
+		}
+		editor.appendChild(pendingFields);
+		break;
+	case pageScores:
+		pendingFields = document.createElement('div');
+		pendingFields.className = 'gridThree';
+		pendingFields.appendChild(makeSpan('header gridSpan', 'Scores'));
+		pendingFields.appendChild(makeSpan('gridSpan', ''));
+		pendingFields.appendChild(makeSpan('gridSpan', ''));
+		pendingFields.appendChild(makeSpan('header', 'You Arcade'));
+		pendingFields.appendChild(makeSpan('mediumValue', 'High Score'));
+		pendingFields.appendChild(makeSpan('mediumValue', 'Last Score'));		
+		pendingFields.appendChild(makeSpan('', 'Darts 7 #1'));
+		pendingFields.appendChild(makeInput('mediumValue', 'number', scoresYouDarts1HighOffset1, uint32, copyHighScore, 0, 9999999, true, modDivide, 10000, false, 0.0001));
+		pendingFields.appendChild(makeInput('mediumValue', 'number', scoresYouDarts1LastOffset, uint32, copyHighScore, 0, 9999999, true, modDivide, 10000, false, 0.0001));
+		pendingFields.appendChild(makeSpan('', 'Darts 7 #2'));
+		pendingFields.appendChild(makeInput('mediumValue', 'number', scoresYouDarts2HighOffset1, uint32, copyHighScore, 0, 9999999, true, modDivide, 10000, false, 0.0001));
+		pendingFields.appendChild(makeInput('mediumValue', 'number', scoresYouDarts2LastOffset, uint32, copyHighScore, 0, 9999999, true, modDivide, 10000, false, 0.0001));
+		pendingFields.appendChild(makeSpan('', 'Excite QTE'));
+		pendingFields.appendChild(makeInput('mediumValue', 'number', scoresExciteQTEHighOffset1, uint32, copyHighScore, 0, 999999, true));
+		pendingFields.appendChild(makeInput('mediumValue', 'number', scoresExciteQTELastOffset, uint32, copyHighScore, 0, 999999, true));
+		pendingFields.appendChild(makeSpan('', 'QTE Title'));
+		pendingFields.appendChild(makeInput('mediumValue', 'number', scoresQTETitleHighOffset1, uint32, copyHighScore, 0, 999999, true));
+		pendingFields.appendChild(makeInput('mediumValue', 'number', scoresQTETitleLastOffset, uint32, copyHighScore, 0, 999999, true));
+		pendingFields.appendChild(makeSpan('header', 'Harbor Lounge'));
+		pendingFields.appendChild(makeSpan('gridSpan', ''));
+		pendingFields.appendChild(makeSpan('gridSpan', ''));
+		pendingFields.appendChild(makeSpan('', 'Darts 7'));
+		pendingFields.appendChild(makeInput('mediumValue', 'number', scoresHarborDartsHighOffset1, uint32, copyHighScore, 0, 9999999, true, modDivide, 10000, false, 0.0001));
+		pendingFields.appendChild(makeInput('mediumValue', 'number', scoresHarborDartsLastOffset, uint32, copyHighScore, 0, 9999999, true, modDivide, 10000, false, 0.0001));
+		pendingFields.appendChild(makeSpan('', 'Neo Darts'));
+		pendingFields.appendChild(makeInput('mediumValue', 'number', scoresNeoDartsHighOffset1, uint32, copyHighScore, 0, 999, true));
+		pendingFields.appendChild(makeInput('mediumValue', 'number', scoresNeoDartsLastOffset, uint32, copyHighScore, 0, 999, true));
+		editor.appendChild(pendingFields);
+
+		pendingFields = document.createElement('div');
+		pendingFields.appendChild(makeSpan('header gridSpan', 'Space Harrier High Scores'));
+		pendingFields.appendChild(makeSpan('gridSpan', ''));
+		pendingFields.appendChild(makeSpan('', 'Initials'));
+		pendingFields.appendChild(makeSpan('smallValue', 'Score'));
+		for (i = 0; i < 20; i++) {
+			pendingFields.appendChild(makeInput('smallValue', 'text', scoresSpaceHarrierOffset + (i*0x0C) + 4, text, forceCase, false, false, true, modText, 3));
+			pendingFields.lastChild.pattern = '[A-Za-z0-9.]{1,3}';
+			pendingFields.appendChild(makeInput('mediumValue', 'number', scoresSpaceHarrierOffset + (i*0x0C), uint32, false, 0, 99999999, true));
+		}
+		editor.appendChild(pendingFields);
+
+		pendingFields = document.createElement('div');
+		pendingFields.appendChild(makeSpan('header gridSpan', 'Hang On High Scores'));
+		pendingFields.appendChild(makeSpan('gridSpan', ''));
+		pendingFields.appendChild(makeSpan('', 'Initials'));
+		pendingFields.appendChild(makeSpan('smallValue', 'Score'));
+		for (i = 0; i < 20; i++) {
+			pendingFields.appendChild(makeInput('smallValue', 'text', scoresHangOnOffset + (i*0x0C) + 4, text, forceCase, false, false, true, modText, 3));
+			pendingFields.lastChild.pattern = '[A-Za-z0-9.]{1,3}';
+			pendingFields.appendChild(makeInput('mediumValue', 'number', scoresHangOnOffset + (i*0x0C), uint32, false, 0, 99999999, true));
+		}
+		editor.appendChild(pendingFields);
+		break;
+	case pageTime:
+		pendingFields = document.createElement('div');
+		pendingFields.appendChild(makeSpan('header gridSpan', 'Time'));
+		pendingFields.appendChild(makeSpan('gridSpan', ''));
+		pendingFields.appendChild(makeSpan('', 'Year'));
+		pendingFields.appendChild(makeInput('smallValue', 'number', timeYearOffset, uint8, false, 1986, 1987, true, modAdd, 1900));
+		pendingFields.appendChild(makeSpan('', 'Month'));
+		pendingFields.appendChild(makeInput('smallValue', 'number', timeMonthOffset, uint8, false, 1, 12, true));
+		pendingFields.appendChild(makeSpan('', 'Day'));
+		pendingFields.appendChild(makeInput('smallValue', 'number', timeDayOffset, uint8, false, 1, 31, true));
+		pendingFields.appendChild(makeSpan('', 'Hour'));
+		pendingFields.appendChild(makeInput('smallValue', 'number', timeHourOffset, uint8, false, 0, 23, true));
+		pendingFields.appendChild(makeSpan('', 'Minute'));
+		pendingFields.appendChild(makeInput('smallValue', 'number', timeMinuteOffset, uint8, false, 0, 59, true));
+		pendingFields.appendChild(makeSpan('', 'Second'));
+		pendingFields.appendChild(makeInput('smallValue', 'number', timeSecondOffset, uint8, false, 0, 59, true));
+		pendingFields.appendChild(makeSpan('', 'Day of Week'));
+		pendingFields.appendChild(makeSelect('smallValue', selectData.day, timeWeekdayOffset, arrayIndexed8));
+		editor.appendChild(pendingFields);
+		break;
+	}
+
+	for (let field of editorFields) loadValue(field);
+}
+
+function makeSpan(className, innerHTML, extraStyles) {
+	var result = document.createElement('span');
+	if (className !== undefined) result.className = className;
+	if (innerHTML !== undefined) result.innerHTML = innerHTML;
+	if (extraStyles !== undefined) result.style = extraStyles;
+	return result;
+}
+function makeSelect(className, selectData, offset, dataType, callback) {
+	var result = document.createElement('select');
+	if (className !== undefined) result.className = className;
+	result.appendChild(selectData.dom.cloneNode(true));
+	result.offset = offset;
+	result.dataType = dataType;
+	result.array = selectData.array;
+	if (result.array.length == 1) result.disabled = true;
+	if (typeof callback === 'function') result._callback = callback;
+	editorFields.push(result);
+	return result;
+}
+function makeInput(className, type, offset, dataType, callback, min, max, required, modifyMode, modifier, disabled, decimal) {
+	var result = document.createElement('input');
+	if (className !== undefined) result.className = className;
+	result.type = type;
+	if (type = 'time') result.step = 1;
+	result.offset = offset;
+	result.dataType = dataType;
+	if (typeof callback === 'function') result._callback = callback;
+	if ((typeof min === 'number') || (typeof min === 'string')) result.min = min;
+	if ((typeof max === 'number') || (typeof max === 'string')) result.max = max;
+	if (required === true) result.required = true;
+	if (modifyMode == modText) {
+		result.dataLength = modifier;
+	}
+	else if ((typeof modifyMode === 'number') && (typeof modifier === 'number')) {
+		result.modifyMode = modifyMode;
+		result.modifier = modifier;
+	}
+	if (disabled === true) result.disabled = true;
+	if (typeof decimal === 'number') result.step = decimal;
+	editorFields.push(result);
+	return result;
+}
+function addPageButton(text, disabled, selected) {
+	var result = document.createElement('button');
+	result.type = 'button';
+	result.value = pageButtons.length;
+	result.innerText = text;
+	if (disabled) result.disabled = disabled;
+	if (selected) result.className = 'selected';
+	global.firstElementChild.appendChild(result);
+	pageButtons.push(result);
+	return Number(result.value);
+}
+
+function parseDate(callbackMode, target) {
+	var saveDate;
+	if (callbackMode == callbackCustomLoad) {
+		saveDate = new Date();
+		saveDate.setFullYear(rawData.getUint8(timeYearOffset)+1900);
+		saveDate.setMonth(rawData.getUint8(timeMonthOffset)-1);
+		saveDate.setDate(rawData.getUint8(timeDayOffset));
+		target.valueAsDate = saveDate;
+	}
+	if (callbackMode == callbackCustomSave) {
+		saveDate = target.valueAsDate;
+		rawData.setUint8(timeYearOffset, (saveDate.getFullYear()-1900));
+		rawData.setUint8(timeMonthOffset, (saveDate.getMonth()+1));
+		rawData.setUint8(timeDayOffset, saveDate.getDate());
+		rawData.setUint8(timeWeekdayOffset, fixWeekday(saveDate.getDay()));
+		target.valueAsDate = saveDate;
+	}
+	function fixWeekday(weekday) {
+		if (weekday == 0) return 7;
+		else              return weekday;
+	}
+}
+
+function parseTime(callbackMode, target) {
+	var saveDate;
+	if (callbackMode == callbackCustomLoad) {
+		saveDate = new Date();
+		saveDate.setUTCHours(rawData.getUint8(timeHourOffset));
+		saveDate.setUTCMinutes(rawData.getUint8(timeMinuteOffset));
+		saveDate.setUTCSeconds(rawData.getUint8(timeSecondOffset));
+		saveDate.setUTCMilliseconds(0);
+		target.valueAsDate = saveDate;
+	}
+	if (callbackMode == callbackCustomSave) {
+		saveDate = target.valueAsDate;
+		rawData.setUint8(timeHourOffset, saveDate.getUTCHours());
+		rawData.setUint8(timeMinuteOffset, saveDate.getUTCMinutes());
+		rawData.setUint8(timeSecondOffset, saveDate.getUTCSeconds());
+		target.valueAsDate = saveDate;
+	}
+}
+
+function forceCase(callbackMode, target) {
+	if (callbackMode == callbackBeforeSave) target.value = target.value.toUpperCase();
+}
+
+function copyHighScore(callbackMode, target) {
+	if (callbackMode == callbackAfterSave) {
+		switch(target.offset) {
+		case scoresYouDarts1HighOffset1:
+			rawData.setUint32(scoresYouDarts1HighOffset2, target.value, LE);
+			rawData.setUint32(scoresYouDarts1HighOffset2+0x4000, target.value, LE);
+			break;
+		case scoresYouDarts2HighOffset1:
+			rawData.setUint32(scoresYouDarts2HighOffset2, target.value, LE);
+			rawData.setUint32(scoresYouDarts2HighOffset2+0x4000, target.value, LE);
+			break;
+		case scoresHarborDartsHighOffset1:
+			rawData.setUint32(scoresHarborDartsHighOffset2, target.value, LE);
+			rawData.setUint32(scoresHarborDartsHighOffset2+0x4000, target.value, LE);
+			break;
+		case scoresNeoDartsHighOffset1:
+			rawData.setUint32(scoresNeoDartsHighOffset2, target.value, LE);
+			rawData.setUint32(scoresNeoDartsHighOffset2+0x4000, target.value, LE);
+			break;
+		case scoresExciteQTEHighOffset1:
+			rawData.setUint32(scoresExciteQTEHighOffset2, target.value, LE);
+			rawData.setUint32(scoresExciteQTEHighOffset2+0x4000, target.value, LE);
+			break;
+		case scoresQTETitleHighOffset1:
+			rawData.setUint32(scoresQTETitleHighOffset2, target.value, LE);
+			rawData.setUint32(scoresQTETitleHighOffset2+0x4000, target.value, LE);
+			break;
+		}
+	}
+}
+
+function countChanged(callbackMode) {
+	if (callbackMode == callbackAfterSave) createUI();
+}
+
+function buildSelectData(data) {
+	var i, element, entry;
+	var output = {};
+
+	output.dom = document.createDocumentFragment();
+	output.array = [];
+
+	for (i = 0; entry = data[i]; i++) {
+		element = document.createElement('option');
+		if (debug) element.innerHTML = padString(Number(entry[1]).toString(16).toUpperCase(),'00') + ": " + entry[0];
+		else element.innerHTML = entry[0];
+		element.value = entry[1];
+		output.dom.appendChild(element);
+		output.array[entry[1]] = i;
+	}
+
+	return output;
+}
+
+function testDateInput() {
+	var test = document.createElement('input');
+	test.type = 'date';
+	if (test.type = 'date') {
+		test.type = 'time'
+		if (test.type = 'time') { return true; }
+		else { return false; }
+	}
+	else { return false; }
+}
+
+function testChecksum() {
+	var checksum = calculateChecksum(new DataView(rawData.buffer, checksumRangeStart, checksumRangeLength));
+	var storedChecksum = rawData.getInt32(checksumOffset, LE);
+	return (checksum == storedChecksum);
+}
+
+function setChecksum() {
+	rawData.setInt32(checksumOffset, calculateChecksum(new DataView(rawData.buffer, checksumRangeStart, checksumRangeLength)), LE)
+}
+
+function calculateChecksum(data) {
+	var i, j, v = new Int32Array(10);
+
+	v[0] = -1;
+	i = (data.byteLength);
+
+	do {
+		v[1] = data.getInt8((data.byteLength-i));
+
+		v[2] = ((v[1] << 24) ^ v[0]);
+
+		for (j = 2; j < 9; j++) {
+			if (v[j] >= 0) v[j+1] = (2 * v[j])
+			else           v[j+1] = (2 * v[j]) ^ 0x4C11DB7
+		}
+
+		if (v[9] >= 0) v[0] = (2 * v[9])
+		else           v[0] = (2 * v[9]) ^ 0x4C11DB7
+
+		--i;
+	} while (i);
+
+	return (1 - v[0]);
+}
+
+function loadValue(target) {
+	var rawValue, rawBitmask;
+	switch(target.dataType) {
+	case custom:
+		target._callback(callbackCustomLoad, target);
+		break;
+	case uint8:
+		rawValue = rawData.getUint8(target.offset);
+		target.value = rawValue;
+		break;
+	case uint16:
+		rawValue = rawData.getUint16(target.offset, LE);
+		target.value = rawValue;
+		break;
+	case uint32:
+		rawValue = rawData.getUint32(target.offset, LE);
+		target.value = rawValue;
+		break;
+	case uint64:
+		rawValue = rawData.getBigUint64(target.offset, LE);
+		target.value = rawValue;
+		break;
+	case float32:
+		rawValue = rawData.getFloat32(target.offset, LE);
+		target.value = rawValue.toFixed(1);
+		break;
+	case arrayIndexed8:
+		rawValue = rawData.getUint8(target.offset)
+		target.selectedIndex = target.array[rawValue];
+		break;
+	case arrayIndexed16:
+		rawValue = rawData.getUint16(target.offset, LE)
+		target.selectedIndex = target.array[rawValue];
+		break;
+	case arrayIndexed32:
+		rawValue = rawData.getUint32(target.offset, LE)
+		target.selectedIndex = target.array[rawValue];
+		break;
+	case checkbox:
+		rawValue = rawData.getUint8(target.offset);
+		if (rawValue == 1) target.checked = true;
+		else               target.checked = false;
+		break;
+	case text:
+		rawValue = new Uint8Array(rawData.buffer, target.offset, target.dataLength);
+		target.value = decodeText.decode(rawValue);
+		break;
+	}
+	if (target.modifyMode) {
+		switch(target.modifyMode) {
+		case modAdd:
+			target.value = rawValue + target.modifier;
+			break;
+		case modSubtract:
+			target.value = rawValue - target.modifier;
+			break;
+		case modMultiply:
+			target.value = rawValue * target.modifier;
+			break;
+		case modDivide:
+			target.value = rawValue / target.modifier;
+			break;
+		}
+	}
+	if ((target._callback) && (target.dataType != custom)) target._callback(callbackAfterLoad, target);
+}
+
+function valueChanged(e) {
+	var rawValue;
+	// Load existing value if newly entered value invalid
+	if (e.target.checkValidity()) {
+		// Empty strings are not considered invalid
+		// Check for .value too.
+		if (e.target.offset && e.target.dataType && e.target.value) {
+			if ((e.target._callback) && (e.target.dataType != custom)) e.target._callback(callbackBeforeSave, e.target);
+
+			if (e.target.modifyMode) {
+				switch(e.target.modifyMode) {
+				// Constants refer to loading, reverse action when saving
+				case modAdd:
+					rawValue = e.target.value - e.target.modifier;
+					break;
+				case modSubtract:
+					rawValue = e.target.value + e.target.modifier;
+					break;
+				case modMultiply:
+					rawValue = e.target.value / e.target.modifier;
+					break;
+				case modDivide:
+					rawValue = e.target.value * e.target.modifier;
+					break;
+				}
+			}
+			else { rawValue = e.target.value; }
+
+
+			switch(e.target.dataType) {
+			case custom:
+				e.target._callback(callbackCustomSave, e.target);
+				break;
+			case uint8:
+				rawData.setUint8(e.target.offset, rawValue);
+				break;
+			case uint16:
+				rawData.setUint16(e.target.offset, rawValue, LE);
+				break;
+			case uint32:
+				rawData.setUint32(e.target.offset, rawValue, LE);
+				break;
+			case uint64:
+				//Does not support .modifyMode due to having to use BigInt
+				rawValue = BigInt(e.target.value);
+				rawData.setBigUint64(e.target.offset, rawValue, LE);
+				break;
+			case float32:
+				rawData.setFloat32(e.target.offset, rawValue, LE);
+				break;
+			case arrayIndexed8:
+				rawData.setUint8(e.target.offset, Number(rawValue));
+				break;
+			case arrayIndexed16:
+				rawData.setUint16(e.target.offset, Number(rawValue), LE);
+				break;
+			case arrayIndexed32:
+				rawData.setUint32(e.target.offset, Number(rawValue), LE);
+				break;
+			case checkbox:
+				if (e.target.checked) rawData.setUint8(e.target.offset, 1);
+				else                  rawData.setUint8(e.target.offset, 0);
+				break;
+			case text:
+				encodeText.encodeInto(rawValue, new Uint8Array(rawData.buffer, e.target.offset, e.target.dataLength));
+				break;
+			}
+		}
+		if ((e.target._callback) && (e.target.dataType != custom)) e.target._callback(callbackAfterSave, e.target);
+	}
+/*
+	else {
+		//log.innerHTML = 'Problem saving data…'
+		if (e.target.dataType != custom) loadValue(e.target);
+	}
+*/
+}
+
+function loadData() {
+	storyItems = [
+["Cassette Player",0],
+["Letter to Father",1],
+["Watch",2],
+["Sword Handguard",3],
+["Phoenix Mirror",4],
+["Chen Intro Letter",5],
+["Amulet",6],
+["Photo of Father",7],
+["Photo of Friends",8],
+["Photo of Nozomi [1st Photo|Sunny]",12],
+["Photo of Nozomi [1st Photo|Overcast]",11],
+["Photo of Nozomi [1st Photo|Snowy]",14],
+["Photo of Nozomi [2nd Photo|Sunny]",9],
+["Photo of Nozomi [2nd Photo|Overcast]",10],
+["Photo of Nozomi [2nd Photo|Snowy]",13],
+["Photo of Hazukis",15],
+["Twin Blades",16],
+["",999],
+["Shadow Reaper",18],
+["",999],
+["Stab Armor [Untranslated]",20],
+["",999],
+["Twin Swallow Leap",22],
+["",999],
+["Mud Spider",24],
+["",999],
+["Rising Flash",26],
+["",999],
+["Crawl Cyclone",28],
+["",999],
+["Tiger Storm",30],
+["",999],
+["Arm Break Fire",32],
+["",999],
+["Poetry Scroll",34],
+["Mysterious Scroll",35],
+["Hang On",36],
+["Space Harrier",37],
+["Mysterious Key",38],
+["White Leaf",39],
+["Hong Kong Flier",40],
+["Bargain Flier",41],
+["Route Map 1",42],
+["Route Map 2",43],
+["Route Map 3",44],
+["Route Map 4",45],
+["Route Map 5",46],
+["Racecourse Map",47],
+["Old Depot Map",48],
+["Old Depot Map [Marked]",49],
+["Flashlight",50],
+["C Size Batteries",51],
+["AA Size Batteries",52],
+["Candles",53],
+["Box of Matches",54],
+["Lightbulb",55],
+["Squid Legs",56],
+["Sliced Fish",57],
+["Milk",58],
+["Dried Fish",59],
+["Canned Tuna",60],
+["Salami",61],
+["Chocolate",62],
+["Caramel",63],
+["Potato Chips",64],
+["Winning Can",65]
+	];
+	gachaItems = [
+["Akira 1",0],
+["Akira 2",1],
+["Jacky 1",2],
+["Jacky 2",3],
+["Sarah 1",4],
+["Sarah 2",5],
+["Lau 1",6],
+["Lau 2",7],
+["Pai 1",8],
+["Pai 2",9],
+["Wolf 1",10],
+["Wolf 2",11],
+["Jeffry 1",12],
+["Jeffry 2",13],
+["Kage 1",14],
+["Kage 2",15],
+["Dural Silver",16],
+["Dural Gold",17],
+["Wooden man",18],
+["Rent-A-Hero",19],
+["Try-Z",20],
+["Solo Wing",21],
+["Mr.Yukawa Happi",22],
+["Mr.Yukawa Suit",23],
+["Kids Akira 1",24],
+["Kids Akira 2",25],
+["Kids Jacky 1",26],
+["Kids Jacky 2",27],
+["Kids Sarah 1",28],
+["Kids Sarah 2",29],
+["Kids Lau 1",30],
+["Kids Lau 2",31],
+["Kids Pai 1",32],
+["Kids Pai 2",33],
+["Kids Wolf 1",34],
+["Kids Wolf 2",35],
+["Kids Jeffry 1",36],
+["Kids Jeffry 2",37],
+["Kids Kage 1",38],
+["Kids Kage 2",39],
+["Kids Shun Di 1",40],
+["Kids Shun Di 2",41],
+["Kids Lion 1",42],
+["Kids Lion 2",43],
+["Kids Dural S",44],
+["Kids Dural G",45],
+["NiGHTS 1",46],
+["NiGHTS 2",47],
+["Sonic 1",48],
+["Sonic 2",49],
+["Super Sonic",50],
+["Tails",51],
+["Knuckles",52],
+["Bark",53],
+["Bean",54],
+["Fang",55],
+["Amy",56],
+["Espio",57],
+["Metal Sonic",58],
+["Eggman",59],
+["Hang On 1",60],
+["Hang On 2",61],
+["Hang On 3",62],
+["Hang On 4",63],
+["Hang On 5",64],
+["Hang On G",65],
+["Space Harrier",66],
+["Ruber",67],
+["Binsbein 1",68],
+["Binsbein 2",69],
+["Binsbein 3",70],
+["B.B.Ultra",71],
+["Pochi",72],
+["John",73],
+["Kelly",74],
+["Kuro",75],
+["Tora",76],
+["Big Robin",77],
+["Little Robin",78],
+["Robins",79],
+["Big Philip",80],
+["Little Philip",81],
+["Philips",82],
+["Chip",83],
+["Rap",84],
+["Pop",85],
+["Pip",86],
+["Mary",87],
+["Pyonta",88],
+["Myau",89],
+["Chicken Leg",90],
+["Chao &amp; Pian",91],
+["Ristar",92],
+["Alex Kidd",93],
+["Opa-opa",94],
+["Jet Opa-opa",95],
+["Poppors",96],
+["Coba Beach",97],
+["Aida II",98],
+["Shop",99],
+["Heavy Bomb 1",100],
+["Heavy Bomb 2",101],
+["Heavy Bomb 3",102],
+["Mobo",103],
+["Robo",104],
+["Bonanza Brothers",105],
+["Motor Scooter",106],
+["Delivery Moped",107],
+["Coupé 1",108],
+["Coupé 2",109],
+["Coupé 3",110],
+["Coupé 4",111],
+["Coupé 5",112],
+["Hornet",113],
+["Wagon 1",114],
+["Wagon 2",115],
+["Wagon 3",116],
+["Wagon 4",117],
+["Truck 1",118],
+["Truck 2",119],
+["Truck 3",120],
+["Truck 4",121],
+["Hot Dog Truck",122],
+["Bus",123],
+["Forklift",124],
+["Forklift No.1",125],
+["Forklift No.2",126],
+["Forklift No.3",127],
+["Forklift No.4",128],
+["Forklift No.5",129],
+["Forklift Red",130],
+["Forklift Blue",131],
+["Crane",132],
+["Shenmue Container",133],
+["Container",134],
+["Wooden Crate",135],
+["Anchor",136],
+["Ferry",137],
+["Steering Wheel",138],
+["Float",139],
+["X Button",140],
+["Y Button",141],
+["A Button",142],
+["B Button",143],
+["Cherry",144],
+["Mini Jukebox",145],
+["Mini Slot Game",146],
+["Mini QTE Title",147],
+["Mini Harrier",148],
+["Mini Hang On",149],
+["R-360",150],
+["Mini Darts",151],
+["Mini QTE",152],
+["Mini Pool",153],
+["Matsuyama Prize",154],
+["Mitsuzuka Prize",155],
+["Mega Drive",156],
+["Game Gear",157],
+["Sega Saturn",158],
+["Dreamcast",159],
+["Space Harrier Token",160],
+["Hang On Token",161],
+["Ball 1",162],
+["Ball 2",163],
+["Ball 3",164],
+["Dice 1",165],
+["Dice 2",166],
+["Dice 3",167]
+	];
+	selectData.cassette = buildSelectData([
+["GoGo",0],
+["Feel Tired Song",1],
+["Hip de Hop",2],
+["Like A Feeling",3],
+["Heart Beats",4],
+["Flower Girl",5],
+["Antiquity Tree",6],
+["Dandy Old Man",7],
+["Liquor",8],
+["Linda",9],
+["Magical Sound Shower",10],
+["HANG ON",11],
+["Space Harrier",12],
+["Final Take Off",13],
+["Destiny",14],
+["Boz Nov",15],
+["Be-witch",16],
+["MJQ",17],
+["Harbor Bar",18],
+["NaNa",19],
+["Spider",20],
+["Glyfada",21],
+["Y.A.D.A",22],
+["Yokosuka Blues",23],
+["Strong",24],
+["Harbor Beats",25],
+["Shenmue",26],
+["Shenhua",27],
+["[Empty]",255]
+	]);
+	selectData.hand = buildSelectData([
+["Avalanche Lance",10],
+["Backfist Willow",9],
+["Big Wheel",7],
+["Double Blow (Replaces Twin Hand Waves)",14],
+["Elbow Assault",3],
+["Elbow Slam",1],
+["Katana Mist Slash",11],
+["Mistral Flash",12],
+["Pit Blow (Replaces Elbow Slam)",13],
+["Rain Thrust",6],
+["Rising Flash",16],
+["Sleeve Strike",5],
+["Stab Armor",18],
+["Swallow Flip",15],
+["Tiger Knuckle",0],
+["Twin Blades",17],
+["Twin Hand Waves",8],
+["Twist Knuckle",2],
+["Upper Knuckle",4]
+	]);
+	selectData.leg = buildSelectData([
+["Against Cascade",3],
+["Brutal Tiger",7],
+["Crawl Cyclone",14],
+["Crescent Kick",0],
+["Cyclone Kick",9],
+["Dark Moon",8],
+["Hold Against Leg",6],
+["Mud Spider",15],
+["Shadow Reaper",17],
+["Side Reaper Kick",2],
+["Surplice Slash",4],
+["Swallow Dive (Replaces Side Reaper Kick)",11],
+["Thunder Kick",5],
+["Tornado Kick (Replaces Against Cascade)",12],
+["Trample Kick",1],
+["Twin Swallow Leap",16],
+["Windmill",10]
+	]);
+	selectData.throw = buildSelectData([
+["Arm Break Fire",10],
+["Backtwist Drop",8],
+["Cross Charge",13],
+["Darkside Hazuki",7],
+["Demon Drop",4],
+["Mist Reaper",3],
+["Overthrow",0],
+["Shadow Blade",12],
+["Shadow Step",9],
+["Shoulder Buster",5],
+["Sweep Throw",1],
+["Tengu Drop",6],
+["Tiger Storm",11],
+["Vortex Throw",2]
+	]);
+	selectData.day = buildSelectData([
+["Mon",1],
+["Tue",2],
+["Wed",3],
+["Thu",4],
+["Fri",5],
+["Sat",6],
+["Sun",7]
+	]);
+}
+
+/*
+ * parseDOM() - a shortcut for parsing a xhtml string into a DOM tree
+ *            - can use innerHTML/outerHTML as standardised alongside HTML5
+ *            - Still useful if you explictly want a DocumentFragment
+ */
+function parseDOM(inputHTML) {
+	var parser = parseDOM.parser || (parseDOM.parser = new DOMParser());
+	var parsedContent = parser.parseFromString(inputHTML, 'text/html');
+
+	// Return a node if a single element is passed.
+	if (parsedContent.body.childNodes.length<=1) return parsedContent.body.firstChild;
+
+	// Otherwise use a documentFragment.
+	var fragment = document.createDocumentFragment();
+	while (parsedContent.body.hasChildNodes()) {
+		fragment.appendChild(parsedContent.body.firstChild);
+	}
+	return fragment;
+}
+function isNull(data) {
+	if (data == 0x00) return true;
+	else              return false;
+}
+// Pad a number by adding characters to the length then slicing from the left
+function padNumber(number, padString) {
+	if (number >= (10 ** padString.length)) {
+		return number.toString();
+	}
+	else if (number < 0) {
+		return '-' + (padString + (number * -1)).slice(((padString.length) * -1))
+	}
+	else {
+		return (padString + number).slice(((padString.length) * -1))
+	}
+}
+// Same but for strings
+function padString(text, padString) {
+	return (padString + text).slice(((padString.length) * -1))
+}
+		</script>
+	</body>
+</html>
