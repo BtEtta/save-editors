@@ -3,25 +3,26 @@ An archive of HTML/JavaScript-based editors I have made for various games. They 
 
 All these editors are designed as a single file for ease of portability.
 
-**Always backup your save files before editing them.** While I have made every effort to ensure that the edited files that result are valid save files that does not mean that the game will perform as expected in all situations e.g. giving yourself a key item earlier than would normally be possible.
+**Always backup your save files before editing them.**  
+While I have made every effort to ensure that the edited files that result are valid save files that does not mean that the game will perform as expected in all situations e.g. giving yourself a key item earlier than would normally be possible.
 I accept no responsibility if you lose progress as a result of using any of these editors.
 
 ## Hyrule Warriors: Age of Calamity
-Complete as regards editing materials collected and their quantities.
-Weapon editor is fully functional but more research is needed around EXP caps for different weapon types and default subvalues for seals.
+Complete as regards editing materials collected and their quantities.  
+Weapon editor is fully functional but more research is needed around EXP caps for different weapon types and default subvalues for seals.  
 No work has begun on the character editor.
 
 ## Shenmue I & Shenmue II HD
-Changing the in-game date & time.
-Full editing of the inventories, including side content such as capsule toys.
-Full editing of your available moves, and their levels.
-Full editing of arcade machine high scores. Which will trigger the correct cutscenes when certain thresholds have been met.
+Changing the in-game date & time.  
+Full editing of the inventories, including side content such as capsule toys.  
+Full editing of your available moves, and their levels.  
+Full editing of arcade machine high scores. Which will trigger the correct cutscenes when certain thresholds have been met.  
 In theory these editors should also work for the original Dreamcast releases provided you can handle the VMU checksums and encapsulation. This is untested.
 
 ## Trials of Mana/Seiken Densetsu 3
-This is the oldest of the editors I have made and lacks some of the polish of later editors.
-Allows for full inventory editing & full editing of stats for your three characters (although several of those stats are recalculated by the game in various circumstances)
-Name editing should work for the English 2018 re-release, the 2000 Neill Corlett fan translation, and the original Japanese release.
+This is the oldest of the editors I have made and lacks some of the polish of later editors.  
+Allows for full inventory editing & full editing of stats for your three characters (although several of those stats are recalculated by the game in various circumstances)  
+Name editing should work for the English 2018 re-release, the 2000 Neill Corlett fan translation, and the original Japanese release.  
 Labels for items and other in-game text should also match for the two English translations but would need someone capable of reading and inputting Japanese for the labels to be correct for that version.
 
 ## Notes
