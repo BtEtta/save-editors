@@ -1,0 +1,1088 @@
+﻿<!doctype html>
+<html>
+	<head>
+		<title></title>
+		<style>
+/********* GLOBAL *********/
+:root {
+	color: #DDD;
+	background-color: #222;
+	font-family: sans-serif;
+	font-size: 14px;
+	line-height: 1.2em;
+}
+
+#global,
+#selector,
+#editor,
+#editor > div.group {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: start;
+	& .wrap { align-self: stretch; }
+}
+header,
+#global,
+#page {
+	margin: 5px;
+	&:not(#page, #global) { padding: 5px; }
+	&:not(#page) { border: 1px solid #AAA; }
+}
+#log { margin-left: 20px; }
+
+/********* EDITOR LAYOUT *********/
+#global {
+	align-items: center;
+	/* top/bottom padding need to be 0 in #global for vertical separators to work properly */
+	padding: 0 5px;
+}
+#global > button {
+	margin: 8px 3px 8px 0;
+}
+#global > span {
+	align-self: stretch;
+	padding: 5px 3px;
+}
+#global > span.group {
+	display: inline-flex;
+	column-gap: 6px;
+	align-items: center;
+	margin-left: 5px;
+	padding-left: 5px;
+	border-left: 1px solid #AAA;
+}
+
+/* Defer spacing to element margins */
+.tight-spacing { gap: 0 !important; }
+
+#selector {
+	justify-content: left;
+	gap: 3px 3px;
+	&.active { margin-bottom: 5px; }
+}
+/* Allow flexing on all addSubPageButton() buttons and on makeButton() buttons when there is only one */
+#selector > button,
+#selector > span:first-child:last-child { flex: auto; }
+
+#editor > div {
+	margin: 0 5px 5px 0;
+	&.wrap { margin: 0 -1px -1px 0; }
+	padding: 8px;
+	border: 1px solid #AAA;
+}
+
+/* Assume two columns as the default grid */
+/* Adding more classes each time you need more columns seems jank but it's the neatest way to line up headers with fields */
+#editor div:not(.group) {
+	display: grid;
+	grid-template-columns: repeat(2, auto);
+	align-items: center;
+	align-content: start;
+	gap: 6px 6px;
+	flex: none;
+}
+#editor div.gridOne { grid-template-columns: repeat(1, auto); }
+#editor div.gridThree { grid-template-columns: repeat(3, auto); }
+#editor div.gridFour { grid-template-columns: repeat(4, auto); }
+#editor div.gridFive { grid-template-columns: repeat(5, auto); }
+#editor div.gridSix { grid-template-columns: repeat(6, auto); }
+
+#editor .colRight {
+	justify-self: end;
+	text-align: right;
+}
+
+/* Establish containing block if needed */
+#editor div:has(> .header + .header) { position: relative; }
+
+#editor > div.group { column-gap: 6px; }
+#editor > div:has(.monospace) {
+	/* 2 * (padding: 8px; + border: 1px;) */
+	max-width: calc(100% - 18px);
+	overflow-x: auto;
+}
+
+span.gridSpan {
+	grid-column: 1 / -1;
+	white-space: nowrap;
+}
+
+/* Smooth vertical alignment of checkbox labels */
+input[type="checkbox"] {
+	& + span {
+		display: inline-flex;
+		white-space: pre;
+	}
+}
+
+/********* FORM CONTROLS *********/
+input,
+select {
+	color: #DDD;
+	background-color: #222;
+	border: 1px solid #DDD;
+}
+
+#editor optgroup {
+	padding: 0;
+	color: #222;
+	background-color: #DDD;
+	font-style: normal;
+}
+
+button {
+	padding: 2px 5px;
+	color: #DDD;
+	background-color: #444;
+	border: 1px solid #DDD;
+}
+button[disabled] { opacity: 50%; }
+button.selected { border: 1px solid #AAA }
+
+input[type="file"] { border: none; }
+select[disabled],
+input[disabled],
+button.selected {
+	color: #222;
+	background-color: #888;
+}
+
+article div .sortValue { width: 25px; }
+article div .smallValue { width: 50px; }
+article div .mediumValue { width: 90px; }
+article div .largeValue { width: 125px; }
+article div .stringValue { width: 175px; }
+article div .hugeValue { width: 250px; }
+article div .fixedString { display: inline-block; }
+article div .dynamic { text-decoration: underline; }
+article div [type="date"],
+article div [type="time"] { width: auto; }
+article div [type="checkbox"] { max-width: 15px; }
+
+input { padding-right: 0; }
+input:invalid { border: 1px solid red; }
+
+#save.dirty {
+	color: #DDD;
+	background-color: #383;
+}
+
+/********* MISCELLANEOUS STYLES *********/
+span.header {
+	&.gridSpan:has(+ .header) {
+		position: absolute;
+		top: 8px;
+		width: 100%;
+		height: 1lh;
+		background-color: rebeccapurple;
+		z-index: -1;
+	}
+	text-align: center;
+	background-color: rebeccapurple;
+	font-weight: bold;
+	white-space: pre;
+}
+span.subhead {
+	text-align: center;
+	font-weight: bold;
+}
+.monospace {
+	white-space: pre;
+	font-family: monospace;
+}
+span.right { justify-self: right !important; }
+span.disabled { color: #888; }
+span.warning { color: #B33; }
+span.good { color: #3B3; }
+
+span.button {
+	display: inline-grid;
+	position: relative;
+	white-space: nowrap;
+}
+span.button > div {
+	display: flex;
+	align-items: center;
+	position: absolute;
+	top: 20px;
+	z-index: 1000;
+	padding: 5px;
+	border: 1px solid #DDD;
+	color: #DDD;
+	background-color: #444;
+	font-weight: normal;
+}
+span.button > div > * {
+	white-space: nowrap;
+	text-align: left !important;
+}
+span.button.right > div { right: 0; }
+span.button.left > div { left: 0; }
+
+.dynamic.active {
+	justify-self: start !important;
+	position: relative;
+	& > span {
+		display: inline-flex;
+		position: absolute;
+		/* Pretty much impossible to perfectly line up item-editor inputs with the inputs adjacent to underlying label across all browsers/systems */
+		/* This seems to work, at least as long as the underlying label has text in it — but it's very fragile */
+		top: calc((((0px - 1lh)) / 2) + 7px);
+		left: 0;
+		padding: 0;
+		color: #DDD;
+		background-color: #555;
+		box-shadow: 0 0 3px 6px #555
+	}
+	& button {
+		margin-left: 1px;
+		padding: 0;
+		text-align: center;
+		font-weight: bold;
+	}
+	& .close-button > button {
+		width: 20px;
+		color: #900;
+		background-color: #222;
+	}
+	& .delete-button > button {
+		padding: 0 5px;
+		margin-left: 10px;
+		color: #DDD;
+		background-color: #900;
+	}
+}
+
+#editor span:has(span.note) { display: inline-flex; }
+span.note { font-weight: normal; }
+span.note.small { font-size: 0.8rem; }
+span.note.small > * { font-size: 1rem; }
+span.note > span { display: none; }
+span.note:hover { position: relative; }
+span.note:hover > span {
+	display: inline-block;
+	text-align: left;
+	position: absolute;
+	top: 20px;
+	/*min-width: 200px;*/
+	z-index: 2000;
+	padding: 3px;
+	box-shadow: 0 0 5px 5px black;
+	color: #222;
+	background-color: #DD9;
+	white-space: nowrap;
+	font-size: 0.9rem;
+	font-weight: normal;
+}
+/* Has been used in other editors based on this framework — needs re-evaluating when this code is re-integrated into an editor where it was used */
+/*
+span.separator {
+	border-bottom: 1px dotted #DDD;
+	padding-bottom: 5px;
+	margin-bottom: 5px;
+}
+*/
+		</style>
+	</head>
+	<body>
+		<header>
+			<span>
+				<label>Choose file: <input type=file id=inputFile accept=""></label>
+				<button type=button id=save disabled autocomplete=off>Save Changes</button>
+			</span>
+			<span id=log></span>
+		</header>
+		<article>
+			<div id=global>
+			</div>
+			<div id=page>
+				<div id=selector></div>
+				<div id=editor><div>ALWAYS REMEMBER TO BACKUP YOUR SAVES<br>I accept no responsibily for any problems that occur from using this editor</div></div>
+			</div>
+		</article>
+		<script>
+'use strict';
+
+// For Testing - Add '?debug' to the end of the address bar to enable
+const debug = (location.search.match(/debug/)) ? 1 : 0;
+
+// Data Type IDs
+const custom = 1;
+const uint8 = 2;
+const int8 = 3;
+const uint16 = 4;
+const int16 = 5;
+const uint24 = 6;
+const uint32 = 7;
+const int32 = 8;
+const uint64 = 9;
+const int64 = 10;
+const float32 = 11;
+const arrayIndexed8 = 12;
+const arrayIndexed16 = 13;
+const arrayIndexed32 = 14;
+const arrayStringIndexed = 15;
+const checkbox8 = 16;
+const checkbox32 = 17;
+const text = 18;
+const bitmask = 19;
+const debugToString = 20;
+
+const callbackAfterLoad = 1;
+const callbackCustomLoad = 2;
+const callbackBeforeSave = 3;
+const callbackAfterSave = 4;
+const callbackCustomSave = 5;
+const callbackClickActivation = 6;
+// Modifier Mode (when loading, will be reverse action when saving)
+const modAdd = 1;
+const modSubtract = 2;
+const modMultiply = 3;
+const modDivide = 4;
+
+// Store references to a few HTML elements
+var header = document.querySelector('header');
+var inputFile = document.querySelector('#inputFile');
+var save = document.querySelector('#save');
+var log = document.querySelector('#log'); // Used to test data validation fails during development
+var global = document.querySelector('#global');
+var selector = document.querySelector('#selector');
+var editor = document.querySelector('#editor');
+
+// Desktop Safari sucks — I believe it supports it now but it took a long time - no harm leaving this test in place
+var dateTimeSupport = testDateInput();
+
+var selectedPage = 0;
+var pageButtons = [];
+var pageDefault = addPageButton('Default', true);
+defaultPage(pageDefault);
+
+var editorFields;
+
+var fileName='';
+
+// File size (if fixed)
+const fileSize = 0;
+
+// Will contain the DataView for our ArrayBuffer
+var rawData;
+
+var decodeUTF8 = new TextDecoder('utf-8');
+var encodeUTF8 = new TextEncoder();
+
+// Constants for little-endian/big-endian while manipulating the DataView
+const LE = true, BE = false;
+var defaultEndianness = LE;
+
+// Data
+/*
+	Variables for holding data that may be used to build the UI
+	Typically populated by loadData();
+*/
+
+
+// Subpage selections
+/*
+	Any variables for tracking the state of subpages
+	One per-page with subpages
+*/
+
+// Offsets
+/*
+	Offsets from start of file (assuming the file is one where the position of data is consistant
+	In the case of tables of data may also include the length of entries
+	As well as secondary offsets from the start of each row to specific pieces of data
+*/
+
+document.addEventListener('dragenter', handleDrag, false);
+document.addEventListener('dragover', handleDrag, false);
+function handleDrag(e) { e.preventDefault(); }
+
+inputFile.addEventListener('change', loadFile, false);
+document.addEventListener('drop', loadFile, false);
+
+save.addEventListener('click', saveFile, false);
+
+global.addEventListener('click', changePage, true); // Capturing
+
+// Capture and save changes to values
+document.querySelector('article').addEventListener('input', valueChanged, true);
+document.querySelector('article').addEventListener('click', fieldActivated, true);
+
+// Called from a 'change' event on the file input or 'drop' event
+function loadFile(e) {
+	let reader, file;
+
+	// Are we getting files from a drop event or <input type="file">
+	// Assumes if multiple files were selected we just want the first one
+	if (e.dataTransfer && e.dataTransfer.files) {
+		e.preventDefault();
+		e.stopPropagation();
+		file = e.dataTransfer.files[0];
+	}
+	else if (e.target.files) { file = e.target.files[0]; }
+
+	if (file) {
+		fileName = file.name;
+
+		reader = new FileReader();
+		reader.onload = function (e) {
+			// Keep DataView as a global variable because it's the laziest way
+			// Can access the buffer itself from rawData.buffer when needed
+			rawData = new DataView(this.result);
+			parseFile();
+		}
+		reader.readAsArrayBuffer(file);
+	}
+}
+
+function parseFile() {
+	setPageButtonsDisabled(true);
+	if (rawData.buffer.byteLength === fileSize) { // By default assume you can check file validity based on size alone
+		setPageButtonsDisabled(false);
+		setFileDirty(false);
+		loadData(); // When supporting multiple languages loadData() might need to be rerun when loading new file
+		createUI();
+	}
+	else { editor.innerHTML = '<div>INCORRECT FILE SIZE — FILE NOT LOADED</div>'; }
+}
+
+function saveFile() {
+	// File() contructor takes an Interable Object (such as an Array) of ArrayBuffer (or similar) objects.
+	let fileURL = URL.createObjectURL(new File([rawData], fileName, { type: "application/octet-stream",}));
+
+	// Should just be able to set: location = fileURL (otherwise there's little point to being able to set the fileName property in the File constructor)
+	// But WebKit/Blink doesn't use specified file name in this instance so use workaround of creating anchor with the download property
+	let fileAnchor = document.createElement("a");
+	fileAnchor.href = fileURL;
+	fileAnchor.download = fileName;
+	fileAnchor.click();
+
+	// No way to detect when blob: URL is no longer needed & sometimes revoking it too quickly can cause problems
+	// Completely arbitrary timing used
+	setTimeout(function() { URL.revokeObjectURL(fileURL);}, 1000);
+
+	// No easy way to check user cancelled "download" but clear dirty flag anyway
+	setFileDirty(false);
+}
+
+/*************************************************************************************************************************************************************
+ * Good place to insert any other functions that might be used when loading files
+ *************************************************************************************************************************************************************/
+
+function defaultPage(pageId) {
+	for (let pageButton of pageButtons) { pageButton.classList.remove('selected'); }
+	selectedPage = pageId;
+	pageButtons[pageId].classList.add('selected');
+}
+
+function changePage(e) {
+	if (e.target.tagName.match(/button/i) &&
+		!(e.target.disabled)) {
+		pageButtons[selectedPage].classList.remove('selected');
+		selectedPage = Number(e.target.value);
+		pageButtons[selectedPage].classList.add('selected');
+		createUI();
+	}
+}
+
+function fieldActivated(e) {
+	if (e.target._callback) e.target._callback(callbackClickActivation, e.target);
+}
+
+function setPageButtonsDisabled(state) {
+	let i, button;
+	save.disabled = state;
+	for (i = 0; button = pageButtons[i]; i++) button.disabled = state;
+}
+
+function setFileDirty(state) {
+	if (state) document.getElementById('save').classList.add('dirty');
+	else document.getElementById('save').classList.remove('dirty');
+}
+
+function clearGlobals() {
+	while (pageButtons[pageButtons.length-1].nextElementSibling) {
+		global.removeChild(pageButtons[pageButtons.length-1].nextElementSibling)
+	}
+}
+
+/*************************************************************************************************************************************************************
+ * BUILD THE UI BASED ON SELECTED PAGE
+ *************************************************************************************************************************************************************/
+function createUI() {
+	editorFields = [];
+	let i, j, selectData, baseElement, baseOffset, scratchValues, wrapCounter, wrapSize, pending;
+
+	// Defaults for wrapping long columns
+	wrapCounter = 0;
+	wrapSize = 25;
+
+	// Reset Editor
+	clearGlobals();
+	selector.innerHTML = '';
+	selector.className = '';
+	editor.innerHTML = '';
+	editor.className = '';
+
+	pending = document.createDocumentFragment();
+		// Any fields that don't need to be tied to a specific page
+		// Grouping them in span.group will create dividers
+	global.appendChild(pending);
+
+	switch (selectedPage) {
+	case pageDefault://**************************************************************************************************
+		// Per-page specific layouts here
+	}
+	loadAllValues();
+}
+
+/*************************************************************************************************************************************************************
+ * PUT GAME SPECIFIC FUNCTIONS HERE
+ *************************************************************************************************************************************************************/
+function updateSubPage(e) {
+	// Keep subPage function between editors, but contents will vary per-game based on specifics in createUI()
+	// Try to avoid rerunning createUI() if possible
+	selector.querySelector('.selected').classList.remove('selected');
+	let selectedSubpage = Number(e.target.value);
+	selector.querySelector('[value="' + selectedSubpage + '"]').classList.add('selected');
+
+	switch (selectedPage) {
+	case pageDefault:
+		createUI();
+		break;
+	}
+}
+
+/*************************************************************************************************************************************************************
+ * GENERAL FUNCTIONS THAT SHOULD BE USABLE AMONG MULTIPLE EDITORS — LEAVE EVEN IF NOT USED IN THIS EDITOR
+ *************************************************************************************************************************************************************/
+function dataSwap(offsetA, offsetB, size) {
+	let dataA = new Uint8Array(rawData.buffer, offsetA, size);
+	let dataB = new Uint8Array(rawData.buffer, offsetB, size);
+	let dataSwap = new Uint8Array(size);
+	dataSwap.set(dataA);
+	dataA.set(dataB);
+	dataB.set(dataSwap);
+}
+
+function dataInsert(selectedRow, targetRow, dataOffset, dataRows, rowSize) {
+	let newData = new Uint8Array(dataRows * rowSize);
+	if (selectedRow > targetRow) {
+		// Start until before target row.
+		if (targetRow > 0) newData.set(new Uint8Array(rawData.buffer, dataOffset, rowSize*targetRow))
+		// Selected row.
+		newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*selectedRow), rowSize), rowSize*targetRow);
+		// Target until before selected row.
+		newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*targetRow), rowSize*(selectedRow - targetRow)), rowSize*(targetRow+1));
+		// After selected row until end.
+		if (selectedRow != dataRows) newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*(selectedRow+1)), rowSize*(dataRows-(selectedRow+1))), rowSize*(selectedRow+1));
+	}
+	else {
+		// Start until before selected row.
+		if (selectedRow > 0) newData.set(new Uint8Array(rawData.buffer, dataOffset, rowSize*selectedRow));
+		// After selected row until before target row.
+		newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*(selectedRow+1)), rowSize*(targetRow - (selectedRow+1))), rowSize*selectedRow);
+		// Selected row.
+		newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*selectedRow), rowSize), rowSize*(targetRow-1));
+		// Target row until end.
+		if (targetRow != dataRows) newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*targetRow), rowSize*(dataRows-targetRow)), rowSize*targetRow);
+	}
+	new Uint8Array(rawData.buffer, dataOffset, dataRows * rowSize).set(newData);
+}
+
+function removePrompt(e) { e.target.promptElement.parentNode.removeChild(e.target.promptElement); }
+
+function makeSpan(parentNode, className, innerHTML, extraStyles, extraData) {
+	let result = document.createElement('span');
+	if (className !== undefined) result.className = className;
+	if (innerHTML !== undefined) result.innerHTML = innerHTML;
+	if (extraStyles !== undefined) result.style = extraStyles;
+	if (extraData !== undefined) result.extraData = extraData;
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+function makeDynamicSpan(parentNode, className, innerHTML, offset, dataType, callback, extraStyles, extraData) {
+	let result = makeSpan(null, className, innerHTML, extraStyles, extraData)
+	result.classList.add('dynamic');
+	result.offset = offset;
+	result.dataType = dataType;
+	if (typeof callback === 'function') result._callback = callback;
+	editorFields.push(result);
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+// This always surrounds the button in a <span> as often you want to add additional elements such as a prompt to the button
+function makeButton(parentNode, className, innerHTML, offset, action, promptElement, promptValue, extraData) {
+	let container = document.createDocumentFragment();
+	makeSpan(container, (className !== undefined)?('button ' + className):'button');
+	let result = document.createElement('button');
+	if (innerHTML !== undefined) result.innerHTML = innerHTML;
+	if (offset !== undefined) result.offset = offset;
+	if (typeof action === 'function') result.addEventListener('click', action, false);
+	if (promptElement !== undefined) result.promptElement = promptElement;
+	if (promptValue !== undefined) result.promptValue = promptValue;
+	if (extraData !== undefined) result.extraData = extraData;
+	container.firstChild.appendChild(result);
+	if (parentNode !== null) parentNode.appendChild(container);
+	return container;
+}
+
+function makeSelect(parentNode, className, selectData, offset, dataType, callback, extraData) {
+	let result = document.createElement('select');
+	if (className !== undefined) result.className = className;
+	result.appendChild(selectData.dom.cloneNode(true));
+	result.offset = offset;
+	result.dataType = dataType;
+	result.array = selectData.array;
+	if (typeof callback === 'function') result._callback = callback;
+	if (extraData) result.extraData = extraData;
+	editorFields.push(result);
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+function makeCheckbox(parentNode, className, offset, dataType, callback, value, extraData, disabled, checked) {
+	let result = document.createElement('input');
+	if (className !== undefined) result.className = className;
+	result.type = 'checkbox';
+	result.offset = offset;
+	result.dataType = dataType;
+	if (typeof callback === 'function') result._callback = callback;
+	if (typeof value === 'number') result.value = value;
+	else                           result.value = 1;
+	if (extraData !== undefined) result.extraData = extraData;
+	if (disabled === true) result.disabled = true;
+	if (checked === true) result.checked = true;
+	editorFields.push(result);
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+function makeInput(parentNode, className, type, offset, dataType, callback, limits, modifier, extraData, disabled, decimal) {
+	let result = document.createElement('input');
+	result.required = true;
+	if (className !== undefined) result.className = className;
+	result.type = type;
+	if (type === 'time') result.step = 1;
+	result.offset = offset;
+	result.dataType = dataType;
+	if (typeof callback === 'function') result._callback = callback;
+	if (Array.isArray(limits)) {
+		if (type === 'number') {
+			result.min = limits[0];
+			result.max = limits[1];
+		}
+		else {
+			result.minLength = limits[0];
+			result.maxLength = limits[1];
+			result.pattern = '.{'+limits[0]+','+limits[1]+'}';
+		}
+	}
+	if (Array.isArray(modifier)) {
+		result.modifyMode = modifier[0];
+		result.modifier = modifier[1];
+	}
+	if (extraData !== undefined) result.extraData = extraData;
+	if (disabled === true) result.disabled = true;
+	if (decimal !== undefined) result.step = decimal;
+	editorFields.push(result);
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+function makeDiv(parentNode, className) {
+	let result = document.createElement('div');
+	if (className !== undefined) result.className = className;
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+function addPageButton(text, disabled) {
+	let result = document.createElement('button');
+	result.type = 'button';
+	result.value = pageButtons.length;
+	result.innerText = text;
+	if (disabled) result.disabled = disabled;
+	global.appendChild(result);
+	pageButtons.push(result);
+	return Number(result.value);
+}
+
+function addSubPageButton(text, value) {
+	let result = document.createElement('button');
+	result.type = 'button';
+	result.value = value;
+	result.innerText = text;
+	result.addEventListener('click', updateSubPage, false);
+	selector.appendChild(result);
+	selector.classList.add('active');
+	return result;
+}
+
+function buildSelectData(data) {
+	let i, j, element, entry;
+	let output = {};
+
+	output.dom = document.createDocumentFragment();
+	output.array = [];
+
+	j = 0;
+	for (i = 0; entry = data[i]; i++) {
+		if (entry[2] === 1) {
+			element = document.createElement('optgroup');
+			element.label = entry[0];
+			output.dom.appendChild(element);
+		}
+		else if (debug || entry[2] !== 2) {
+			element = document.createElement('option');
+			if (typeof entry[1] === 'number') {
+				element.innerHTML = ((debug)?padString(Number(entry[1]).toString(16).toUpperCase(),'00') + ': ':'') + entry[0] + ((typeof entry[2] === 'string')?' [' + entry[2] + ']':'');
+			} else {
+				element.innerHTML = ((debug)?entry[1] + ': ':'') + entry[0] + ((typeof entry[2] === 'string')?' [' + entry[2] + ']':'');
+			}
+			element.value = entry[1];
+			if (output.dom.lastChild &&
+				output.dom.lastChild.tagName.match(/optgroup/i)) output.dom.lastChild.appendChild(element);
+			else                                                 output.dom.appendChild(element);
+			output.array[entry[1]] = j;
+			j++;
+		}
+	}
+	return output;
+}
+
+function displayDataBlock(start, blocks, selectedBlock) {
+	// TextDecoders only work on ArrayBuffers, TypedArrays, or DataViews not meant for byte by byte decoding
+	// Just use a fixed array filled with windows-1252 mappings
+	let encoding = [
+		'.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.',
+		' ','!','"','#','$','%','&','\'','(',')','*','+',',','-','.','/','0','1','2','3','4','5','6','7','8','9',':',';','<','=','>','?',
+		'@','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','[','\\',']','^','_',
+		'`','a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z','{','|','}','~','.',
+		'€','.','‚','ƒ','„','…','†','‡','ˆ','‰','Š','‹','Œ','.','Ž','.','.','‘','’','“','”','•','–','—','˜','™','š','›','œ','.','ž','Ÿ',
+		' ','¡','¢','£','¤','¥','¦','§','¨','©','ª','«','¬','.','®','¯','°','±','²','³','´','µ','¶','·','¸','¹','º','»','¼','½','¾','¿',
+		'À','Á','Â','Ã','Ä','Å','Æ','Ç','È','É','Ê','Ë','Ì','Í','Î','Ï','Ð','Ñ','Ò','Ó','Ô','Õ','Ö','×','Ø','Ù','Ú','Û','Ü','Ý','Þ','ß',
+		'à','á','â','ã','ä','å','æ','ç','è','é','ê','ë','ì','í','î','ï','ð','ñ','ò','ó','ô','õ','ö','÷','ø','ù','ú','û','ü','ý','þ','ÿ'
+	]
+	function createHexRow(start, length, grouping, padding) {
+		let i, outputOffset = '', outputBytes = '', outputText = '';
+		let bytes = new Uint8Array(rawData.buffer, start, length);
+		let spanOpen = false;
+		let characterCount = 0;
+		outputOffset += '0x' + padString(readOffset.toString(16), '00000').toUpperCase();
+		for (i = 0; i < length; i++) {
+			if (bytes[i] === 0 && !spanOpen) {
+				outputBytes += '<span style="color: #888;">';
+				spanOpen = true;
+			}
+			else if (bytes[i] !== 0 && spanOpen){
+				outputBytes += '</span>';
+				spanOpen = false;
+			}
+			outputBytes += padString(bytes[i].toString(16), '00').toUpperCase();
+			if (((i+1) % grouping == 0) && ((i+1) < length)) {
+				outputBytes += ' ';
+				characterCount += 3;
+			} else {
+				characterCount += 2;
+			}
+			outputText += encoding[bytes[i]];
+		}
+		// Normalise line end padding
+		if (spanOpen) outputBytes += '</span>';
+		if (padding !== undefined) {
+			outputBytes += ''.padEnd(((2 * padding) + ((padding / grouping)) - characterCount) - 1, ' ');
+		}
+		return outputOffset + '  ' + outputBytes + '  ' + outputText + '<br>';
+	}
+
+	function outputSection(sectionWrapLength, sectionLength, grouping) {
+		while ((sizeRemaining >= sectionWrapLength) && (sectionLength >= sectionWrapLength)) {
+			makeSpan(pending, 'monospace', createHexRow(baseOffset + readOffset, sectionWrapLength, grouping));
+			readOffset += sectionWrapLength;
+			sizeRemaining -= sectionWrapLength;
+			sectionLength -= sectionWrapLength;
+		}
+		// loop exited because remaining sectionLength is less than will occupy a full sectionWrapLength
+		if ((sectionLength > 0)) {
+			makeSpan(pending, 'monospace', createHexRow(baseOffset + readOffset, sectionLength, grouping, sectionWrapLength));
+			readOffset += sectionLength;
+			sizeRemaining -= sectionLength;
+		}
+	}
+	let i, defaultWrapLength, baseOffset, readOffset, dataBlock, sizeRemaining, pending;
+
+	baseOffset = start;
+	readOffset = 0;
+	defaultWrapLength = 0x20;
+	for (i = 0; i < blocks.length; i++) {
+		if (i < selectedBlock) baseOffset += blocks[i][1]
+	}
+
+	dataBlock = blocks[selectedBlock];
+	sizeRemaining = dataBlock[1];
+
+	pending = makeDiv(null, 'gridOne tight-spacing');
+	makeSpan(pending, '', 'Name: ' + dataBlock[0]);
+	makeSpan(pending, '', 'Base Offset: 0x' + baseOffset.toString(16).toUpperCase());
+	makeSpan(pending, '', 'Size: 0x' + dataBlock[1].toString(16).toUpperCase());
+	for (let value of dataBlock[2]) {
+		makeSpan(pending, '', value)
+	}
+
+/*****************************************************************************
+ * The data block formatting section is messily designed but works well enough
+ * for its intended debugging & experimenting purposes
+ * Each array entry is either a single value array containing a string indicating a header
+ * Or an array of three values: [bytes to display in a line, total length, byte grouping]
+ *****************************************************************************/
+	if (dataBlock[3] !== undefined) {
+		for (i = 0; i < dataBlock[3].length; i++) {
+			if (typeof dataBlock[3][i][0] === 'string') makeSpan(pending, 'monospace', '————————————————————' + dataBlock[3][i][0] + '————————————————————<br>');
+			else outputSection(dataBlock[3][i][0], dataBlock[3][i][1], dataBlock[3][i][2]);
+		}
+	}
+	if (sizeRemaining > 0) {
+		outputSection(defaultWrapLength, sizeRemaining, 1)
+	}
+	editor.appendChild(pending);
+}
+
+function testDateInput() {
+	let test = document.createElement('input');
+	test.type = 'date';
+	if (test.type = 'date') {
+		test.type = 'time'
+		if (test.type = 'time') { return true; }
+		else { return false; }
+	}
+	else { return false; }
+}
+
+function loadAllValues() {
+	for (let field of editorFields) loadValue(field);
+}
+
+function loadValue(target) {
+	let rawValue;
+	switch (target.dataType) {
+	case custom:
+		target._callback(callbackCustomLoad, target); break;
+	case uint8:
+		target.value = rawData.getUint8(target.offset); break;
+	case int8:
+		target.value = rawData.getInt8(target.offset); break;
+	case uint16:
+		target.value = rawData.getUint16(target.offset, defaultEndianness); break;
+	case int16:
+		target.value = rawData.getInt16(target.offset, defaultEndianness); break;
+	case uint32:
+		target.value = rawData.getUint32(target.offset, defaultEndianness); break;
+	case int32:
+		target.value = rawData.getInt32(target.offset, defaultEndianness); break;
+	case uint64:
+		target.value = rawData.getBigUint64(target.offset, defaultEndianness); break;
+	case int64:
+		target.value = rawData.getBigInt64(target.offset, defaultEndianness); break;
+	case float32:
+		target.value = rawData.getFloat32(target.offset, defaultEndianness).toFixed(1); break;
+	case arrayIndexed8:
+		target.selectedIndex = target.array[rawData.getUint8(target.offset)]; break;
+	case arrayIndexed16:
+		target.selectedIndex = target.array[rawData.getUint16(target.offset, defaultEndianness)]; break;
+	case arrayIndexed32:
+		target.selectedIndex = target.array[rawData.getUint32(target.offset, defaultEndianness)]; break;
+	case arrayStringIndexed:
+		rawValue = new Uint8Array(rawData.buffer, target.offset, target.extraData[0])
+		target.selectedIndex = target.extraData[1].id.get(decodeUTF8.decode(rawValue).split('\u0000')[0]);
+		break;
+	case checkbox8:
+		rawValue = rawData.getUint8(target.offset);
+		if (rawValue == target.value) target.checked = true;
+		else                          target.checked = false;
+		break;
+	case text:
+		rawValue = new Uint8Array(rawData.buffer, target.offset, target.extraData[0]);
+		target.value = decodeUTF8.decode(rawValue).split('\u0000')[0];
+		break;
+	case bitmask:
+		rawValue = rawData.getUint8(target.offset + Math.floor(target.value/8))
+		if ((rawValue & (2**(target.value%8))) == (2**(target.value%8))) target.checked = true;
+		else                                                             target.checked = false;
+		break;
+	case debugToString:
+		rawValue = Array.from(new Uint8Array(rawData.buffer, target.offset, target.extraData));
+		for (let i = 0; i < rawValue.length; i++) rawValue[i] = padString(rawValue[i].toString(16), '00').toUpperCase();
+		target.innerText = rawValue.join(' ');
+		break;
+	}
+	// Does not currently support 64 bit values due to having to use BigInt
+	if (target.modifyMode) {
+		switch (target.modifyMode) {
+			case modAdd: target.value = target.value + target.modifier; break;
+			case modSubtract: target.value = target.value - target.modifier; break;
+			case modMultiply: target.value = target.value * target.modifier; break;
+			case modDivide: target.value = target.value / target.modifier; break;
+		}
+	}
+	if ((target._callback) && (target.dataType != custom)) target._callback(callbackAfterLoad, target);
+}
+
+function valueChanged(e) { saveValue(e.target); }
+
+function saveValue(target) {
+	let rawValue;
+	// Load existing value if newly entered value invalid
+	if (target.checkValidity()) {
+		setFileDirty(true);
+		// Empty strings are not considered invalid
+		// Check for .value too.
+		if (target.offset && target.dataType && target.value) {
+			if ((target._callback) && (target.dataType != custom)) target._callback(callbackBeforeSave, target);
+
+			// Does not currently support 64 bit values due to having to use BigInt
+			// Value is reloaded from element in switch below in those cases
+			if (target.modifyMode) {
+				switch (target.modifyMode) {
+					// Constants refer to loading, reverse action when saving
+					case modAdd: rawValue = target.value - target.modifier; break;
+					case modSubtract: rawValue = target.value + target.modifier; break;
+					case modMultiply: rawValue = target.value / target.modifier; break;
+					case modDivide: rawValue = target.value * target.modifier; break;
+				}
+			}
+			else {
+				rawValue = target.value;
+			}
+
+			switch (target.dataType) {
+			case custom:
+				target._callback(callbackCustomSave, target); break;
+			case uint8:
+				rawData.setUint8(target.offset, rawValue); break;
+			case int8:
+				rawData.setInt8(target.offset, rawValue); break;
+			case uint16:
+				rawData.setUint16(target.offset, rawValue, defaultEndianness); break;
+			case int16:
+				rawData.setInt16(target.offset, rawValue, defaultEndianness); break;
+			case uint32:
+				rawData.setUint32(target.offset, rawValue, defaultEndianness); break;
+			case int32:
+				rawData.setInt32(target.offset, rawValue, defaultEndianness); break;
+			case uint64:
+				rawValue = BigInt(target.value);
+				rawData.setBigUint64(target.offset, rawValue, defaultEndianness);
+				break;
+			case int64:
+				rawValue = BigInt(target.value);
+				rawData.setBigInt64(target.offset, rawValue, defaultEndianness);
+				break;
+			case float32:
+				rawData.setFloat32(target.offset, rawValue, defaultEndianness); break;
+			case arrayIndexed8:
+				rawData.setUint8(target.offset, Number(rawValue)); break;
+			case arrayIndexed16:
+				rawData.setUint16(target.offset, Number(rawValue), defaultEndianness); break;
+			case arrayIndexed32:
+				rawData.setUint32(target.offset, Number(rawValue), defaultEndianness); break;
+			case arrayStringIndexed:
+				if (typeof target.extraData[2] === 'string') encodeUTF8.encodeInto(padString(rawValue, target.extraData[2], true), new Uint8Array(rawData.buffer, target.offset, target.extraData[0]));
+				else                                         encodeUTF8.encodeInto(rawValue + '\u0000', new Uint8Array(rawData.buffer, target.offset, target.extraData[0]));
+				break;
+			case checkbox8:
+				if (target.checked) rawData.setUint8(target.offset, target.value);
+				else                rawData.setUint8(target.offset, 0);
+				break;
+			case text:
+				if (typeof target.extraData[1] === 'string') encodeUTF8.encodeInto(padString(rawValue, target.extraData[1], true), new Uint8Array(rawData.buffer, target.offset, target.extraData[0]));
+				else                                         encodeUTF8.encodeInto(rawValue + '\u0000', new Uint8Array(rawData.buffer, target.offset, target.extraData[0]));
+				break;
+			case bitmask:
+				// Set up mask
+				rawValue = 0xFF - (2**(target.value%8));
+				// Passthrough all bits except the one we're changing
+				rawValue = rawData.getUint8(target.offset + Math.floor(target.value/8)) & rawValue;
+				if (target.checked) rawValue += (2**(target.value%8))
+				rawData.setUint8(target.offset + Math.floor(target.value/8), rawValue);
+				break;
+			}
+		}
+		if ((target._callback) && (target.dataType != custom)) target._callback(callbackAfterSave, target);
+	}
+}
+
+function debugString(byteArray, grouping, spacer) {
+	let i, output = '';
+	if ((spacer === null) || (spacer === undefined)) spacer = '';
+	for (i = 0; i < byteArray.length; i++) {
+		output += padString(byteArray[i].toString(16), '00').toUpperCase() + spacer;
+		if ((i+1) % grouping == 0) output += ' '
+	}
+	return output.trimEnd();
+}
+
+// Warnings array flags selected bytes red — use for testing unconfirmed bytes
+function debugStringBuffer(start, length, spacer, warnings, toString) {
+	if (warnings === undefined) warnings = [];
+	let i, output = '';
+	let bytes = new Uint8Array(rawData.buffer, start, length);
+	if ((spacer === null) || (spacer === undefined)) spacer = '';
+	for (i = 0; i < length; i++) {
+		if ((warnings[i] === 1) && bytes[i]) output += '<span class=warning>';
+		else if (warnings[i] === 0)          output += '<span class=good>';
+		output += padString(bytes[i].toString(16), '00').toUpperCase() + spacer;
+		if (((warnings[i] === 1) && bytes[i]) || warnings[i] === 0) output += '</span>'
+		if ((i+1) % 4 == 0) output += ' '
+	}
+	if (toString) output = decodeUTF8.decode(bytes) + ' (' + output.trimEnd() + ')';
+	return output.trimEnd()
+}
+
+function loadData(gameType) {
+	function prepareStringIndexedArray(stringArray, sourceData) {
+		let indexCount = 0;
+		stringArray.select = buildSelectData(sourceData);
+		stringArray.id = new Map();
+		stringArray.name = []
+		for (let entry of sourceData) {
+			// Exclude header entries;
+			if (entry[2] != 1) {
+				stringArray.id.set(entry[1], indexCount)
+				stringArray.name.push(entry)
+				indexCount++;
+			}
+		}
+	}
+
+	// This can be a good place to insert defaultPage() and sub page overrides while testing
+}
+
+// Pad a number as a string by adding characters then slicing from the left
+// Will not crop a number that is already longer than the padding length
+function padNumber(number, padString) {
+	if (number >= (10 ** padString.length)) {
+		return number.toString();
+	}
+	else if (number < 0) {
+		return '-' + (padString + (number * -1)).slice((padString.length * -1))
+	}
+	else {
+		return (padString + number).slice(((padString.length) * -1))
+	}
+}
+// Same but for strings so does not even consider numerical properties
+function padString(text, padString, padRight) {
+	if (padRight) return (text + padString).slice(0, (padString.length-1))
+	else          return (padString + text).slice((padString.length * -1))
+}
+// If you want to sort an array of numbers
+function compareNumbers(a, b) {
+  return a - b;
+}
+		</script>
+	</body>
+</html>

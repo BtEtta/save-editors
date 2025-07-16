@@ -4,8 +4,12 @@ An archive of HTML/JavaScript-based editors I have made for various games. They 
 All these editors are designed as a single file for ease of portability.
 
 **Always backup your save files before editing them.**  
-While I have made every effort to ensure that the edited files that result are valid save files that does not mean that the game will perform as expected in all situations e.g. giving yourself a key item earlier than would normally be possible.
+While I have made every effort to ensure that the edited files that result are valid save files that does not mean that the game will perform as expected in all situations e.g. giving yourself a key item earlier than would normally be possible.  
 I accept no responsibility if you lose progress as a result of using any of these editors.
+
+## Framework
+This is the core code of the editor stripped of any game specific logic.  
+Used as a base for any new projects but not guaranteed to applicable to any older projects without significant work.
 
 ## Hyrule Warriors: Age of Calamity
 Complete as regards editing materials collected and their quantities.  
@@ -26,14 +30,21 @@ Name editing should work for the English 2018 re-release, the 2000 Neill Corlett
 Labels for items and other in-game text should also match for the two English translations but would need someone capable of reading and inputting Japanese for the labels to be correct for that version.
 
 ## Notes
-Several of these files will contain a line similar to the following:
+### Debug Mode
+Many of these editors will have a debug mode. Enabling this will change the behaviour of certain pieces of code and may reveal extra viewing/editing options used during development.  
+This should not be required unless you have a curious mind or you're planning on extending the available features of the editor.
+
+In The newest versions of the framework this can be enabled by adding `?debug` to the end of the URI in the address bar.
+
+Older files may instead contain a line similar to the following which can be changed to any truthy value in JavaScript to enable:
 ```
 const debug = 0;
 ```
-Setting this value to 1 will change certain behaviours within the editor, exposing more options or changing how existing ones are displayed. This should not be required unless you're planning on extending the available features of the editor.
 
 ## Licence
-Copyright (c) 2024 Robin Zalek
+The Framework and all editors have the following licence unless otherwise noted.
+
+Copyright (c) 2025 Robin Zalek
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
