@@ -1,0 +1,2678 @@
+﻿<!doctype html>
+<html>
+	<head>
+		<title>Final Fantasy XIII PC — Save Editor</title>
+		<style>
+/********* GLOBAL *********/
+:root {
+	color: #DDD;
+	background-color: #222;
+	font-family: sans-serif;
+	font-size: 14px;
+	line-height: 1.2em;
+}
+
+#global,
+#selector,
+#editor,
+#editor > div.group {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: start;
+	& .wrap { align-self: stretch; }
+}
+header,
+#global,
+#page {
+	margin: 5px;
+	&:not(#page, #global) { padding: 5px; }
+	&:not(#page) { border: 1px solid #AAA; }
+}
+#log { margin-left: 20px; }
+
+/********* EDITOR LAYOUT *********/
+#global {
+	align-items: center;
+	/* top/bottom padding need to be 0 in #global for vertical separators to work properly */
+	padding: 0 5px;
+}
+#global > button {
+	margin: 8px 3px 8px 0;
+}
+#global > span {
+	align-self: stretch;
+	padding: 5px 3px;
+}
+#global > span.group {
+	display: inline-flex;
+	column-gap: 6px;
+	align-items: center;
+	margin-left: 5px;
+	padding-left: 5px;
+	border-left: 1px solid #AAA;
+}
+
+/* Defer spacing to element margins */
+.tight-spacing { gap: 0 !important; }
+
+#selector {
+	justify-content: left;
+	gap: 3px 3px;
+	&.active { margin-bottom: 5px; }
+}
+/* Allow flexing on all addSubPageButton() buttons and on makeButton() buttons when there is only one */
+#selector > button,
+#selector > span:first-child:last-child { flex: auto; }
+
+#editor > div {
+	margin: 0 5px 5px 0;
+	&.wrap { margin: 0 -1px -1px 0; }
+	padding: 8px;
+	border: 1px solid #AAA;
+}
+
+/* Assume two columns as the default grid */
+/* Adding more classes each time you need more columns seems jank but it's the neatest way to line up headers with fields */
+#editor div:not(.group) {
+	display: grid;
+	grid-template-columns: repeat(2, auto);
+	align-items: center;
+	align-content: start;
+	gap: 6px 6px;
+	flex: none;
+}
+#editor div.gridOne { grid-template-columns: repeat(1, auto); }
+#editor div.gridThree { grid-template-columns: repeat(3, auto); }
+#editor div.gridFour { grid-template-columns: repeat(4, auto); }
+#editor div.gridFive { grid-template-columns: repeat(5, auto); }
+#editor div.gridSix { grid-template-columns: repeat(6, auto); }
+
+#editor .colRight {
+	justify-self: end;
+	text-align: right;
+}
+
+/* Establish containing block if needed */
+#editor div:has(> .header + .header) { position: relative; }
+
+#editor > div.group { column-gap: 6px; }
+#editor > div:has(.monospace) {
+	/* 2 * (padding: 8px; + border: 1px;) */
+	max-width: calc(100% - 18px);
+	overflow-x: auto;
+}
+
+span.gridSpan {
+	grid-column: 1 / -1;
+	white-space: nowrap;
+}
+
+/* Smooth vertical alignment of checkbox labels */
+input[type="checkbox"] {
+	& + span {
+		display: inline-flex;
+		white-space: pre;
+	}
+}
+
+/********* FORM CONTROLS *********/
+input,
+select {
+	color: #DDD;
+	background-color: #222;
+	border: 1px solid #DDD;
+}
+
+#editor optgroup {
+	padding: 0;
+	color: #222;
+	background-color: #DDD;
+	font-style: normal;
+}
+
+button {
+	padding: 2px 5px;
+	color: #DDD;
+	background-color: #444;
+	border: 1px solid #DDD;
+}
+button[disabled] { opacity: 50%; }
+button.selected { border: 1px solid #AAA }
+
+input[type="file"] { border: none; }
+select[disabled],
+input[disabled],
+button.selected {
+	color: #222;
+	background-color: #888;
+}
+
+article div .sortValue { width: 25px; }
+article div .smallValue { width: 50px; }
+article div .mediumValue { width: 90px; }
+article div .largeValue { width: 125px; }
+article div .stringValue { width: 175px; }
+article div .hugeValue { width: 250px; }
+article div .fixedString { display: inline-block; }
+article div .dynamic { text-decoration: underline; }
+article div [type="date"],
+article div [type="time"] { width: auto; }
+article div [type="checkbox"] { max-width: 15px; }
+
+input { padding-right: 0; }
+input:invalid { border: 1px solid red; }
+
+#save.dirty {
+	color: #DDD;
+	background-color: #383;
+}
+
+/********* MISCELLANEOUS STYLES *********/
+span.header {
+	&.gridSpan:has(+ .header) {
+		position: absolute;
+		top: 8px;
+		width: 100%;
+		height: 1lh;
+		background-color: rebeccapurple;
+		z-index: -1;
+	}
+	text-align: center;
+	background-color: rebeccapurple;
+	font-weight: bold;
+	white-space: pre;
+}
+span.subhead {
+	text-align: center;
+	font-weight: bold;
+}
+.monospace {
+	white-space: pre;
+	font-family: monospace;
+}
+span.right { justify-self: right !important; }
+span.disabled { color: #888; }
+span.warning { color: #B33; }
+span.good { color: #3B3; }
+
+span.button {
+	display: inline-grid;
+	position: relative;
+	white-space: nowrap;
+}
+span.button > div {
+	display: flex;
+	align-items: center;
+	position: absolute;
+	top: 20px;
+	z-index: 1000;
+	padding: 5px;
+	border: 1px solid #DDD;
+	color: #DDD;
+	background-color: #444;
+	font-weight: normal;
+}
+span.button > div > * {
+	white-space: nowrap;
+	text-align: left !important;
+}
+span.button.right > div { right: 0; }
+span.button.left > div { left: 0; }
+
+.dynamic.active {
+	justify-self: start !important;
+	position: relative;
+	& > span {
+		display: inline-flex;
+		position: absolute;
+		/* Pretty much impossible to perfectly line up item-editor inputs with the inputs adjacent to underlying label across all browsers/systems */
+		/* This seems to work, at least as long as the underlying label has text in it — but it's very fragile */
+		top: calc((((0px - 1lh)) / 2) + 7px);
+		left: 0;
+		padding: 0;
+		color: #DDD;
+		background-color: #555;
+		box-shadow: 0 0 3px 6px #555
+	}
+	& button {
+		margin-left: 1px;
+		padding: 0;
+		text-align: center;
+		font-weight: bold;
+	}
+	& .close-button > button {
+		width: 20px;
+		color: #900;
+		background-color: #222;
+	}
+	& .delete-button > button {
+		padding: 0 5px;
+		margin-left: 10px;
+		color: #DDD;
+		background-color: #900;
+	}
+}
+
+#editor span:has(span.note) { display: inline-flex; }
+span.note { font-weight: normal; }
+span.note.small { font-size: 0.8rem; }
+span.note.small > * { font-size: 1rem; }
+span.note > span { display: none; }
+span.note:hover { position: relative; }
+span.note:hover > span {
+	display: inline-block;
+	text-align: left;
+	position: absolute;
+	top: 20px;
+	/*min-width: 200px;*/
+	z-index: 2000;
+	padding: 3px;
+	box-shadow: 0 0 5px 5px black;
+	color: #222;
+	background-color: #DD9;
+	white-space: nowrap;
+	font-size: 0.9rem;
+	font-weight: normal;
+}
+/* Has been used in other editors based on this framework — needs re-evaluating when this code is re-integrated into an editor where it was used */
+/*
+span.separator {
+	border-bottom: 1px dotted #DDD;
+	padding-bottom: 5px;
+	margin-bottom: 5px;
+}
+*/
+		</style>
+	</head>
+	<body>
+		<header>
+			<span>
+				<label>Choose file: <input type=file id=inputFile accept=".dat,.dat_decrypted"></label>
+				<button type=button id=save disabled autocomplete=off>Save Changes</button>
+			</span>
+			<span id=log>Final Fantasy XIII PC — Save Editor</span>
+		</header>
+		<article>
+			<div id=global>
+			</div>
+			<div id=page>
+				<div id=selector></div>
+				<div id=editor><div>ALWAYS REMEMBER TO BACKUP YOUR SAVES<br>I accept no responsibily for any problems that occur from using this editor</div></div>
+			</div>
+		</article>
+		<script>
+'use strict';
+
+// For Testing - Add '?debug' to the end of the address bar to enable
+const debug = (location.search.match(/debug/)) ? 1 : 0;
+
+// Data Type IDs
+const custom = 1;
+const uint8 = 2;
+const int8 = 3;
+const uint16 = 4;
+const int16 = 5;
+const uint24 = 6;
+const uint32 = 7;
+const int32 = 8;
+const uint64 = 9;
+const int64 = 10;
+const float32 = 11;
+const arrayIndexed8 = 12;
+const arrayIndexed16 = 13;
+const arrayIndexed32 = 14;
+const arrayStringIndexed = 15;
+const checkbox8 = 16;
+const checkbox32 = 17;
+const text = 18;
+const bitmask = 19;
+const debugToString = 20;
+
+const callbackAfterLoad = 1;
+const callbackCustomLoad = 2;
+const callbackBeforeSave = 3;
+const callbackAfterSave = 4;
+const callbackCustomSave = 5;
+const callbackClickActivation = 6;
+// Modifier Mode (when loading, will be reverse action when saving)
+const modAdd = 1;
+const modSubtract = 2;
+const modMultiply = 3;
+const modDivide = 4;
+
+// Store references to a few HTML elements
+var header = document.querySelector('header');
+var inputFile = document.querySelector('#inputFile');
+var save = document.querySelector('#save');
+var log = document.querySelector('#log'); // Used to test data validation fails during development
+var global = document.querySelector('#global');
+var selector = document.querySelector('#selector');
+var editor = document.querySelector('#editor');
+
+// Desktop Safari sucks — I believe it supports it now but it took a long time - no harm leaving this test in place
+var dateTimeSupport = testDateInput();
+
+var selectedPage = 0;
+var pageButtons = [];
+var pageParty = addPageButton('Party', true);
+var pageCharacters = addPageButton('Characters', true);
+var pageItems = addPageButton('Items', true);
+var pageWeapons = addPageButton('Weapons', true);
+var pageAccessories = addPageButton('Accessories', true);
+var pageComponents = addPageButton('Components', true);
+var pageKeyItems = addPageButton('Key Items', true);
+var pageDatalog = addPageButton('Datalog', true);
+if (debug) {
+	var pageDebugView = addPageButton('Debug View', true);
+}
+defaultPage(pageParty);
+
+var editorFields;
+
+var fileName='';
+
+// File size (if fixed)
+const fileSize = 300600;
+
+// Will contain the DataView for our ArrayBuffer
+var rawData;
+
+var decodeUTF8 = new TextDecoder('utf-8');
+var encodeUTF8 = new TextEncoder();
+
+// Constants for little-endian/big-endian while manipulating the DataView
+const LE = true, BE = false;
+var defaultEndianness = BE;
+
+// Data
+var dataBlocks;
+var characters;
+var roles;
+var paradigms;
+var datalog;
+var components = {};
+var items = {};
+var keyItems = {};
+var weapons = {};
+var accessories = {};
+
+var idPadding = '\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000';
+
+// Subpage selections
+var selectedDatalog = 7; // Default to "Events"
+var selectedDataBlock = 0;
+
+// Used for the crypto routines
+if (debug) {
+	let pending = document.createElement('label');
+	pending.innerHTML = '<input type=checkbox id=encryption autocomplete=off checked>Save Encryption Enabled?';
+	document.querySelector('header > span:first-child').appendChild(pending);
+	document.querySelector('#encryption').addEventListener('input', setEncryptionState, true);
+}
+var resaveEncrypted;
+var xorTable;
+var xorTableBuilt = false;
+var xorTableOffset;
+var integersArray;
+var specialKey = new Uint32Array(2);
+var checksumOffset = fileSize - 4;
+
+// Offsets
+var indexOffset = 0x208;
+
+var indexLength = 0x20;
+
+var indexBlockSize = 0x1C;
+var indexUnknown1 = 0x10;
+var indexUnknown2 = 0x14;
+var indexUnknown3 = 0x18;
+
+var dataBlocksOffset = 0x828;
+
+var gilOffset = 0x48BC;
+var crystariumStageOffset = 0x4937;
+var featuresOffset = 0x410DE;
+var datalogOffset = 0x410E4;
+var enemyIntelOffset = 0x4480C;
+
+// Party Setup
+var partyOffset = 0x1C028
+
+var partyMembers = 0x0;
+var partyTP = 0x2F;
+var partyDefaultParadigm = 0x33;
+var partyParadigms = 0x43;
+
+// Character Stats
+var characterOffsets = [0x27288, 0x28008, 0x29B08, 0x25788, 0x2A888, 0x23C88];
+if (debug) characterOffsets = [
+	0x27288, 0x28008, 0x29B08, 0x25788, 0x2A888, 0x23C88, 0x24A08, 0x26508,
+	0x1C308, 0x1D088, 0x1DE08, 0x1EB88, 0x1F908, 0x20688, 0x21408, 0x22188,
+	0x22F08, 0x28D88, 0x2B608, 0x2C388, 0x2D108, 0x2DE88, 0x2EC08, 0x2F988,
+	0x30708, 0x31488, 0x32208, 0x32F88, 0x33D08, 0x34A88, 0x35808, 0x36588
+]
+
+var characterID = 0x05;
+var characterAccessorySlots = 0xC40;
+var characterCP = 0xC41;
+var characterCPEarned = 0xC45;
+var characterUnknown1 = 0xC49;
+var characterHP = 0xC4D;
+var characterUnknown2 = 0xC51;
+var characterATB = 0xC55;
+var characterUnknown3 = 0xC59;
+var characterStrength = 0xC5D;
+var characterMagic = 0xC61;
+
+// Inventory
+var itemsOffset = 0x374A0;
+var componentsOffset = 0x3A83C;
+var keyItemsOffset = 0x3BB00;
+
+var inventoryLength = 0x14;
+
+var inventoryName = 0x0;
+var inventoryQuantity = 0x10;
+
+// Equipment indexes are stored as a strings inside inventory blocks
+var weaponsIndexOffset = 0x37954;
+var accessoriesIndexOffset = 0x38C18;
+
+// Equipment
+var equipmentOffset = 0x45610;
+var equipmentLength = 0x1C;
+
+var equipmentName = 0x0;
+var equipmentEquipped = 0x10;
+var equipmentLevel = 0x11;
+var equipmentBonus = 0x12;
+var equipmentEXP = 0x14;
+var equipmentModifier = 0x18;
+
+document.addEventListener('dragenter', handleDrag, false);
+document.addEventListener('dragover', handleDrag, false);
+function handleDrag(e) { e.preventDefault(); }
+
+inputFile.addEventListener('change', loadFile, false);
+document.addEventListener('drop', loadFile, false);
+
+save.addEventListener('click', saveFile, false);
+
+global.addEventListener('click', changePage, true); // Capturing
+
+// Capture and save changes to values
+document.querySelector('article').addEventListener('input', valueChanged, true);
+document.querySelector('article').addEventListener('click', fieldActivated, true);
+
+// Called from a 'change' event on the file input or 'drop' event
+function loadFile(e) {
+	let reader, file;
+
+	// Are we getting files from a drop event or <input type="file">
+	// Assumes if multiple files were selected we just want the first one
+	if (e.dataTransfer && e.dataTransfer.files) {
+		e.preventDefault();
+		e.stopPropagation();
+		file = e.dataTransfer.files[0];
+	}
+	else if (e.target.files) { file = e.target.files[0]; }
+
+	if (file) {
+		fileName = file.name;
+
+		reader = new FileReader();
+		reader.onload = function (e) {
+			// Keep DataView as a global variable because it's the laziest way
+			// Can access the buffer itself from rawData.buffer when needed
+			rawData = new DataView(this.result);
+			parseFile();
+		}
+		reader.readAsArrayBuffer(file);
+	}
+}
+
+function parseFile() {
+	setPageButtonsDisabled(true);
+	if (rawData.buffer.byteLength === fileSize) { // By default assume you can check file validity based on size alone
+		if (checkChecksum()) {
+			setEncryptionState(false);
+			setPageButtonsDisabled(false);
+			setFileDirty(false);
+			loadData(); // When supporting multiple languages loadData() might need to be rerun when loading new file
+			createUI();
+		}
+		else if (decryptFile()) {
+			setEncryptionState(true);
+			setPageButtonsDisabled(false);
+			setFileDirty(false);
+			loadData(); // When supporting multiple languages loadData() might need to be rerun when loading new file
+			createUI();
+		}
+		else { editor.innerHTML = '<div>DECRYPTION ERROR — FILE NOT LOADED</div>'; }
+	}
+	else { editor.innerHTML = '<div>INCORRECT FILE SIZE — FILE NOT LOADED</div>'; }
+}
+
+function saveFile() {
+	if (resaveEncrypted) encryptFile();
+
+	// File() contructor takes an Interable Object (such as an Array) of ArrayBuffer (or similar) objects.
+	let fileURL = URL.createObjectURL(new File([rawData], fileName, { type: "application/octet-stream",}));
+
+	// Should just be able to set: location = fileURL (otherwise there's little point to being able to set the fileName property in the File constructor)
+	// But WebKit/Blink doesn't use specified file name in this instance so use workaround of creating anchor with the download property
+	let fileAnchor = document.createElement("a");
+	fileAnchor.href = fileURL;
+	fileAnchor.download = fileName;
+	fileAnchor.click();
+
+	// No way to detect when blob: URL is no longer needed & sometimes revoking it too quickly can cause problems
+	// Completely arbitrary timing used
+	setTimeout(function() { URL.revokeObjectURL(fileURL);}, 1000);
+
+	// No easy way to check user cancelled "download" but clear dirty flag anyway
+	setFileDirty(false);
+	// Decrypt file again so further editing can resume
+	if (!checkChecksum()) decryptFile();
+}
+
+/*************************************************************************************************************************************************************
+ * FF XIII ENCRYPTION LOGIC PORTED FROM: https://github.com/Surihix/WhiteCryptTool
+ *************************************************************************************************************************************************************/
+
+integersArray =
+[120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,
+ 152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,
+ 184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,
+ 216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,
+ 248,249,250,251,252,253,254,255,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+  24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55,
+  56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87,
+  88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119];
+
+function generateXORTable(seed) {
+	xorTable = new Uint8Array(264);
+
+	let i, blockStart = 0;
+
+	seed.reverse();
+	let seedHalves = new Uint32Array(seed.buffer);
+
+	seedHalves[0] = (seedHalves[0] << 0x08) | (seedHalves[0] >>> 0x18);
+	seedHalves[1] = (seedHalves[1] >>> 0x10) | (seedHalves[1] << 0x10);
+
+	// Reverse order of upper and lower 32bit values while loading into table
+	for (i of [4,5,6,7,0,1,2,3]) xorTable[[4,5,6,7,0,1,2,3][i]] = seed[i];
+
+	// Block 1
+	xorTable[blockStart+0] += 0x45;
+	for (i = blockStart+1; i < blockStart+8; i++) {
+		xorTable[i] += 0xD4 + xorTable[i-1];
+		xorTable[i] ^= (xorTable[i-1]) << 2;
+		xorTable[i] ^= 0x45;
+	}
+
+	// Blocks 2+
+	let previousBlock = new DataView(xorTable.buffer, blockStart, 8).getBigUint64(0, LE);
+	let longHalves = new BigUint64Array(4);
+	for (i = 1; i < 0x20; i++) {
+		blockStart = i * 8;
+		let xorTableHalves = new Uint32Array(xorTable.buffer, blockStart, 2);
+
+		longHalves[0] = BigInt.asUintN(32, previousBlock & 0xFFFFFFFFn);
+		longHalves[1] = BigInt.asUintN(32, previousBlock >> 32n);
+
+		let tempSeed = BigInt.asUintN(64, 5n * previousBlock) ^ longHalves[1] << 32n;
+
+		longHalves[2] = BigInt.asUintN(32, longHalves[0] ^ tempSeed)
+		longHalves[3] = BigInt.asUintN(32, tempSeed >> 32n) ^ longHalves[1]
+
+		xorTableHalves[0] = Number(BigInt.asUintN(32, longHalves[0] ^ longHalves[2]));
+		xorTableHalves[1] = Number(BigInt.asUintN(32, longHalves[3]));
+
+		previousBlock = new DataView(xorTable.buffer, blockStart, 8).getBigUint64(0, LE);
+	}
+	xorTableBuilt = true;
+}
+
+// Note: uses the CryptClb code path from WhiteCryptTool
+function decryptFile() {
+	function decryptByte (byte) {
+		for (let i = 0n; i < 8n; i++) {
+			byte = integersArray[byte] - xorTable[xorTableOffset + i]
+			if (byte < 0) byte &= 0xFF;
+		}
+		return byte;
+	}
+
+	if (!xorTableBuilt) generateXORTable(new Uint8Array([0x56, 0xAA, 0x8F, 0x5E, 0xD1, 0x91, 0x40, 0x8E]));
+
+	// File is encrypted starting with the index
+	let blockCounter = 0n;
+	let currentOffset = indexOffset;
+	const blockCount = BigInt((fileSize - indexOffset) / 8);
+
+	let currentBytes;
+	let decryptedBytes = new Uint8Array(8);
+	let decryptedBytesHalves = new Uint32Array(decryptedBytes.buffer);
+	let xorBlock = new Uint32Array(2);
+	let carryFlag;
+
+	for (let i = 0n; i < blockCount; i++) {
+		currentBytes = new Uint8Array(rawData.buffer, currentOffset, 8);
+
+		xorTableOffset = blockCounter & 0xF8n;
+		xorBlock = new Uint32Array(xorTable.buffer, Number(xorTableOffset), 2);
+		specialKeySetup(blockCounter);
+
+		decryptedBytes[0] = Number(BigInt.asUintN(8, ((i ^ 69n) & 255n) ^ BigInt(currentBytes[0])));
+		decryptedBytes[0] = decryptByte(decryptedBytes[0]);
+		for (let j = 1; j < 8; j++) {
+			decryptedBytes[j] = currentBytes[j-1] ^ currentBytes[j]
+			decryptedBytes[j] = decryptByte(decryptedBytes[j]);
+		}
+
+		carryFlag = (decryptedBytesHalves[0] < xorBlock[0] ? 1 : 0);
+
+		decryptedBytesHalves[0] -= xorBlock[0];
+		decryptedBytesHalves[1] -= xorBlock[1] + carryFlag;
+
+		currentBytes = new Uint32Array(rawData.buffer, currentOffset, 2)
+		currentBytes[0] = decryptedBytesHalves[1] ^ specialKey[1] ^ xorBlock[1];
+		currentBytes[1] = decryptedBytesHalves[0] ^ specialKey[0] ^ xorBlock[0];
+
+		blockCounter += 8n;
+		currentOffset += 8;
+	}
+	return checkChecksum();
+}
+
+function encryptFile() {
+	function encryptByte (byte) {
+		let integerUsed;
+		for (let i = 7n; i >= 0n; i--) {
+			integerUsed = xorTable[xorTableOffset + i] + byte;
+			if (integerUsed > 255) integerUsed = (-256 + byte) + xorTable[xorTableOffset + i];
+			byte = integersArray.indexOf(integerUsed);
+		}
+		return byte;
+	}
+
+	// Update checksum
+	rawData.setUint32(checksumOffset, computeChecksum(), LE);
+
+	// File is encrypted starting with the index
+	let blockCounter = 0n;
+	let currentOffset = indexOffset;
+	const blockCount = BigInt((fileSize - indexOffset) / 8);
+
+	let currentBytes;
+	let encryptedBytes = new BigUint64Array(2);
+	let xorBlock = new Uint32Array(2);
+	let carryFlag;
+
+	for (let i = 0n; i < blockCount; i++) {
+		currentBytes = new Uint32Array(rawData.buffer, currentOffset, 2)
+
+		xorTableOffset = blockCounter & 0xF8n;
+		xorBlock = new Uint32Array(xorTable.buffer, Number(xorTableOffset), 2);
+		specialKeySetup(blockCounter);
+
+		encryptedBytes[0] = (BigInt(currentBytes[1] ^ specialKey[0] ^ xorBlock[0]) | 0xFFFFFFFF00000000n);
+		encryptedBytes[1] = (BigInt(currentBytes[0] ^ specialKey[1] ^ xorBlock[1]) | 0xFFFFFFFF00000000n);
+
+		encryptedBytes[0] += BigInt(xorBlock[0]);
+
+		carryFlag = (BigInt.asUintN(32, encryptedBytes[0]) < xorBlock[0]) ? 1n : 0n;
+		encryptedBytes[1] += BigInt(xorBlock[1]) + carryFlag;
+
+		currentBytes[0] = Number(BigInt.asUintN(32, encryptedBytes[0]));
+		currentBytes[1] = Number(BigInt.asUintN(32, encryptedBytes[1]));
+
+		currentBytes = new Uint8Array(rawData.buffer, currentOffset, 8)
+		currentBytes[0] = encryptByte(currentBytes[0]);
+		currentBytes[0] = Number(BigInt.asUintN(8, ((i ^ 69n) & 255n))) ^ currentBytes[0];
+
+		for (let j = 1; j < 8; j++) {
+			currentBytes[j] = encryptByte(currentBytes[j]);
+			currentBytes[j] = currentBytes[j-1] ^ currentBytes[j]
+		}
+
+		blockCounter += 8n;
+		currentOffset += 8;
+	}
+}
+
+function specialKeySetup(blockCounter) {
+	let seeds = [];
+	seeds[0] = BigInt.asUintN(32, (blockCounter << 10n) & 0xFFFFFFFFn);
+	seeds[1] = BigInt.asUintN(32, (blockCounter << 10n) >> 32n);
+	seeds[2] = BigInt.asUintN(32, (blockCounter << 20n) & 0xFFFFFFFFn);
+	seeds[3] = BigInt.asUintN(32, (blockCounter << 20n) >> 32n);
+	seeds[4] = BigInt.asUintN(32, (blockCounter << 30n) & 0xFFFFFFFFn);
+	seeds[5] = BigInt.asUintN(32, (blockCounter << 30n) >> 32n);
+
+	let specialKeySeedA = BigInt(seeds[0] | seeds[2] | seeds[4] | blockCounter);
+	let specialKeySeedB = BigInt(seeds[1] | seeds[3] | seeds[5]);
+
+	let carryFlag = (specialKeySeedA > BigInt.asUintN(32, ~0xA1652347n) ? 1n : 0n);
+
+	specialKey[0] = Number(BigInt.asUintN(32, specialKeySeedA + 0xA1652347n));
+	specialKey[1] = Number(BigInt.asUintN(32, specialKeySeedB + carryFlag));
+}
+
+function computeChecksum() {
+	let blocks = ((fileSize - indexOffset) - 8) / 4;
+	let checksum = 0n
+	let currentOffset = indexOffset;
+	for (let i = 0; i < blocks; i++) {
+		checksum += BigInt.asUintN(8, BigInt(rawData.getUint8(currentOffset)));
+		currentOffset += 4;
+	}
+	return Number(BigInt.asUintN(32, checksum));
+}
+
+function checkChecksum() {
+	if (rawData.getUint32(checksumOffset, LE) === computeChecksum()) return true;
+	else return false;
+}
+
+function setEncryptionState(state) {
+	if (state.eventPhase === undefined) {
+		resaveEncrypted = state;
+		let target = document.querySelector('#encryption')
+		if (target) target.checked = state;
+	} else {
+		resaveEncrypted = state.target.checked;
+	}
+}
+
+/*************************************************************************************************************************************************************
+ * FF XIII CRYPTO CODE ENDS
+ *************************************************************************************************************************************************************/
+
+function defaultPage(pageId) {
+	for (let pageButton of pageButtons) { pageButton.classList.remove('selected'); }
+	selectedPage = pageId;
+	pageButtons[pageId].classList.add('selected');
+}
+
+function changePage(e) {
+	if (e.target.tagName.match(/button/i) &&
+		!(e.target.disabled)) {
+		pageButtons[selectedPage].classList.remove('selected');
+		selectedPage = Number(e.target.value);
+		pageButtons[selectedPage].classList.add('selected');
+		createUI();
+	}
+}
+
+function fieldActivated(e) {
+	if (e.target._callback) e.target._callback(callbackClickActivation, e.target);
+}
+
+function setPageButtonsDisabled(state) {
+	let i, button;
+	save.disabled = state;
+	for (i = 0; button = pageButtons[i]; i++) button.disabled = state;
+}
+
+function setFileDirty(state) {
+	if (state) document.getElementById('save').classList.add('dirty');
+	else document.getElementById('save').classList.remove('dirty');
+}
+
+function clearGlobals() {
+	while (pageButtons[pageButtons.length-1].nextElementSibling) {
+		global.removeChild(pageButtons[pageButtons.length-1].nextElementSibling)
+	}
+}
+
+/*************************************************************************************************************************************************************
+ * BUILD THE UI BASED ON SELECTED PAGE
+ *************************************************************************************************************************************************************/
+function createUI() {
+	editorFields = [];
+	let i, j, selectData, baseElement, baseOffset, scratchValues, wrapCounter, wrapSize, pending;
+
+	// Defaults for wrapping long columns
+	wrapCounter = 0;
+	wrapSize = 25;
+
+	// Reset Editor
+	clearGlobals();
+	selector.innerHTML = '';
+	selector.className = '';
+	editor.innerHTML = '';
+	editor.className = '';
+
+	pending = document.createDocumentFragment();
+	baseElement = makeSpan(pending, 'group', '');
+		makeSpan(baseElement, '', 'Gil');
+		makeInput(baseElement, 'mediumValue', 'number', gilOffset, uint32, null, [0, 999999999]);
+	baseElement = makeSpan(pending, 'group', '');
+		makeSpan(baseElement, '', 'Technical Points');
+		makeInput(baseElement, 'tinyValue', 'number', partyOffset + partyTP, custom, updateTP, [0,5]);
+	baseElement = makeSpan(pending, 'group', '');
+		makeSpan(baseElement, '', 'Crystarium Stage');
+		// Disable crystarium stage editing until crystarium unlocked
+		scratchValues = ((rawData.getUint16(featuresOffset, defaultEndianness) & 0x20) === 0)
+		makeInput(baseElement, 'tinyValue', 'number', crystariumStageOffset, uint8, null, [0, 10], null, null, scratchValues);
+	baseElement = makeSpan(pending, 'group tight-spacing', '');
+		makeCheckbox(baseElement, '', featuresOffset, bitmask, null, 13);
+		makeSpan(baseElement, '', 'Unlock Omnikit');
+	// These can generate weird side effects that might be difficult to unpick without a *lot* more research into the save
+	// And it doesn't take that long in gameplay to unlock them anyway
+	//makeCheckbox(pending, '', featuresOffset, bitmask, null, 8); makeSpan(pending, '', 'Paradigms');
+	//makeCheckbox(pending, '', featuresOffset, bitmask, null, 10); makeSpan(pending, '', 'Crystarium');
+	global.appendChild(pending);
+
+	switch (selectedPage) {
+	case pageParty://**************************************************************************************************
+		selectData = buildSelectData(characters.id);
+		baseOffset = partyOffset + partyMembers;
+
+		pending = makeDiv(null, 'group');
+		baseElement = makeDiv(pending, 'gridOne');
+			makeSpan(baseElement, 'header', 'Current Party');
+			makeSelect(baseElement, 'largeValue', selectData, baseOffset + (6*4), arrayIndexed16, setPartyLeader)
+			makeSelect(baseElement, 'largeValue', selectData, baseOffset + (7*4), arrayIndexed16, updateAllParadigms)
+			makeSelect(baseElement, 'largeValue', selectData, baseOffset + (8*4), arrayIndexed16, updateAllParadigms)
+
+		baseElement = makeDiv(pending, 'gridOne');
+			makeSpan(baseElement, 'header', 'Party Members');
+			for (i = 0; i < 6; i++) { makeSelect(baseElement, 'largeValue', selectData, baseOffset + (i*4), arrayIndexed16); }
+		editor.appendChild(pending);
+
+		selectData = buildSelectData(roles);
+		pending = makeDiv(null, 'group');
+			for (i = 0; i < 6; i++) {
+				baseOffset = partyOffset + partyParadigms + ([0,2,4,1,3,5][i] * 12);
+				if ((i % 3) === 0) { baseElement = makeDiv(pending, 'gridOne'); }
+				makeSpan(baseElement, 'header', 'Paradigm ' + ([1,3,5,2,4,6][i]));
+				scratchValues = makeSpan(baseElement, 'subhead', '');
+				for (j = 0; j < 3; j++) { makeSelect(baseElement, 'largeValue', selectData, baseOffset + (j*4), arrayIndexed32, updateParadigmTitle, [scratchValues, baseOffset]); }
+			}
+		editor.appendChild(pending);
+
+		pending = makeDiv(null, 'gridOne');
+		makeSpan(pending, 'header', 'Default Paradigm');
+		scratchValues = makeSpan(pending, 'subhead', '');
+		baseOffset = partyOffset + partyDefaultParadigm;
+		for (i = 0; i < 3; i++) { makeSelect(pending, 'largeValue', selectData, baseOffset + (i*4), arrayIndexed32, updateParadigmTitle, [scratchValues, baseOffset]); }
+		editor.appendChild(pending);
+		break;
+	case pageCharacters://**************************************************************************************************
+		for (i = 0; i < characterOffsets.length; i++) {
+			pending = makeDiv(null);
+			baseOffset = characterOffsets[i];
+			makeSpan(pending, 'header gridSpan', characters.name[i])
+			makeSpan(pending, 'colRight', 'CP'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterCP, uint32, null, [0, 999999])
+			makeSpan(pending, 'colRight', 'HP'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterHP, uint32, null, [0, 999999])
+			makeSpan(pending, 'colRight', 'Strength'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterStrength, uint32, null, [0, 999999])
+			makeSpan(pending, 'colRight', 'Magic'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterMagic, uint32, null, [0, 999999])
+			makeSpan(pending, 'colRight', 'ATB Segments'); makeInput(pending, 'smallValue', 'number', baseOffset + characterATB, uint32, null, [2, 6], [modDivide, 10])
+			makeSpan(pending, 'colRight', 'Accessory Slots'); makeInput(pending, 'smallValue', 'number', baseOffset + characterAccessorySlots, uint8, null, [1, 4])
+			if (debug) {
+				makeSpan(pending, 'colRight', 'ID'); makeInput(pending, 'mediumValue', 'text', baseOffset + characterID, text, null, [0, 16], null, [16, idPadding])
+				makeSpan(pending, 'colRight', 'Total CP Earned'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterCPEarned, uint32, null, [0, 9999999])
+				makeSpan(pending, 'colRight', 'Unknown 1'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterUnknown1, uint32, null, [0, 9999999])
+				makeSpan(pending, 'colRight', 'Unknown 2'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterUnknown2, uint32, null, [0, 9999999])
+				makeSpan(pending, 'colRight', 'Unknown 3'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterUnknown3, uint32, null, [0, 9999999])
+			}
+			editor.appendChild(pending);
+		}
+		break;
+	case pageItems://**************************************************************************************************
+	case pageComponents:
+	case pageKeyItems:
+		switch (selectedPage) {
+			case pageItems: scratchValues = [50, itemsOffset, items]; break;
+			case pageComponents: scratchValues = [200, componentsOffset, components]; break;
+			case pageKeyItems: scratchValues = [50, keyItemsOffset, keyItems]; break;
+		}
+		makeButton(selector, '', 'Add Item', scratchValues[1], addInventory, null, null, [scratchValues[0], scratchValues[2].name[0][1]]);
+		selector.classList.add('active');
+
+		for (i = 0; i < scratchValues[0]; i++) {
+			baseOffset = scratchValues[1] + (i * inventoryLength)
+			if (checkInventorySlot(baseOffset + inventoryName)) {
+				if ((wrapCounter%wrapSize) == 0) {
+					editor.appendChild(pending);
+					pending = makeDiv(null, 'wrap');
+				}
+				wrapCounter++;
+				makeDynamicSpan(pending, 'colRight', '', baseOffset + inventoryName, arrayStringIndexed, inventoryLabel, '', [16, scratchValues[2], idPadding])
+				makeInput(pending, 'smallValue', 'number', baseOffset + inventoryQuantity, uint32, null, [0,99]);
+			}
+		}
+		editor.appendChild(pending);
+		break;
+	case pageWeapons://**************************************************************************************************
+	case pageAccessories:
+		switch (selectedPage) {
+			case pageWeapons: scratchValues = [200, weaponsIndexOffset, weapons]; break;
+			case pageAccessories: scratchValues = [300, accessoriesIndexOffset, accessories]; break;
+		}
+		makeButton(selector, '', 'Add Item', scratchValues[1], addEquipment, null, null, [scratchValues[0], scratchValues[2].name[0][1]]);
+		selector.classList.add('active');
+
+		for (i = 0; i < scratchValues[0]; i++) {
+			baseOffset = parseEquipmentIndex(scratchValues[1] + (i * inventoryLength));
+			if (baseOffset !== -1) {
+				if ((wrapCounter%wrapSize) == 0) {
+					editor.appendChild(pending);
+					pending = makeDiv(null, 'wrap');
+					pending.classList.add('gridFive');
+					makeSpan(pending, 'header gridSpan', ''); // Make header background-color span entire column;
+					makeSpan(pending, 'header', '');
+					makeSpan(pending, 'header', 'Modifier');
+					makeSpan(pending, 'header', 'Level');
+					makeSpan(pending, 'header', 'EXP');
+					baseElement = makeSpan(pending, 'header', 'Bonus');
+						bonusTable(baseElement);
+				}
+				wrapCounter++;
+				baseOffset = equipmentOffset + (baseOffset * equipmentLength)
+				baseElement = makeDynamicSpan(pending, 'colRight', '', baseOffset + equipmentName, arrayStringIndexed, inventoryLabel, '', [16, scratchValues[2], idPadding, scratchValues[1] + (i * inventoryLength)]);
+				makeInput(pending, 'smallValue', 'number', baseOffset + equipmentModifier, int32, modifierLabels, [-9999, 9999], null, [baseElement]);
+				makeInput(pending, 'smallValue', 'number', baseOffset + equipmentLevel, uint8, null, [1, 100]);
+				makeInput(pending, 'mediumValue', 'number', baseOffset + equipmentEXP, uint32, null, [0, 9999999]);
+				makeInput(pending, 'smallValue', 'number', baseOffset + equipmentBonus, uint16, null, [0, 65535]);
+			}
+		}
+		editor.appendChild(pending);
+		break;
+	case pageDatalog://**************************************************************************************************
+		pending = makeDiv(null, 'gridOne');
+		makeSpan(pending, 'header', '  Select Entries  ');
+		makeButton(pending, '', 'None', 0, bulkDatalog);
+		makeButton(pending, '', 'All', 1, bulkDatalog);
+		if ((selectedDatalog & 0xF0) > 0) makeButton(pending, '', 'Incomplete', 2, bulkDatalog);
+		if (debug) makeButton(pending, '', 'Unavailable', 3, bulkDatalog);
+
+		scratchValues = [0, 0]; // setup scratchValues to store current datalog subpage as we loop through arrays
+		for (i = 0; scratchValues[0] = datalog[i]; i++) {
+			if ((scratchValues[0][2] < 256) && (scratchValues[1] === selectedDatalog)) {
+				if (((scratchValues[0][2] === 1) && (debug)) || (scratchValues[0][2] === 0)) {
+					if ((wrapCounter%wrapSize) == 0 && wrapCounter > 0) {
+						pending.classList.add('wrap');
+						editor.appendChild(pending);
+						pending = makeDiv(null, 'tight-spacing wrap');
+					}
+					wrapCounter++;
+					if ((selectedDatalog & 0xF0) === 0) makeCheckbox(pending, '', baseOffset, bitmask, null, scratchValues[0][1], scratchValues[0][2]);
+					else makeCheckbox(pending, 'colRight', enemyIntelOffset + (scratchValues[0][1] * 9), custom, enemyIntelHandler, null, scratchValues[0][2]);
+					baseElement = makeSpan(pending, 'group', scratchValues[0][0]);
+						if (scratchValues[0][2] === 1) addUnavailableNote(baseElement);
+				}
+			}
+			else if (scratchValues[0][2] === 0xFFFE) {
+				if ((selectedDatalog & 0xF0) === 0) baseOffset = datalogOffset + (scratchValues[0][1] * 16);
+				scratchValues[1] = scratchValues[0][1];
+				addSubPageButton(scratchValues[0][0], scratchValues[0][1])
+				if (scratchValues[1] === selectedDatalog) {
+					selector.lastChild.classList.add('selected');
+					// When reaching this code for the first time pending is a DocumentFragment that was emptied when appended to global
+					if (pending.children.length !== 0) editor.appendChild(pending);
+					pending = makeDiv(null, 'tight-spacing');
+				}
+			}
+			else if ((scratchValues[0][2] === 0xFFFF) && (scratchValues[1] === selectedDatalog)) {
+				wrapCounter = 0;
+				if (pending.children.length !== 0) editor.appendChild(pending);
+				pending = makeDiv(null, 'tight-spacing');
+				makeSpan(pending, 'header gridSpan', scratchValues[0][0]);
+			}
+		};
+		editor.appendChild(pending);
+		break;
+	case pageDebugView://**************************************************************************************************
+		for (i = 0; i < dataBlocks.length; i++) {
+			addSubPageButton(dataBlocks[i][0], i);
+			if (i == selectedDataBlock) selector.lastChild.classList.add('selected');
+		}
+		displayDataBlock(dataBlocksOffset, dataBlocks, selectedDataBlock);
+		break;
+	}
+	loadAllValues();
+}
+
+/*************************************************************************************************************************************************************
+ * PUT GAME SPECIFIC FUNCTIONS HERE
+ *************************************************************************************************************************************************************/
+function updateSubPage(e) {
+	// Keep subPage function between editors, but contents will vary per-game based on specifics in createUI()
+	// Try to avoid rerunning createUI() if possible
+	selector.querySelector('.selected').classList.remove('selected');
+	let selectedSubpage = Number(e.target.value);
+	selector.querySelector('[value="' + selectedSubpage + '"]').classList.add('selected');
+
+	switch (selectedPage) {
+		case pageDatalog: selectedDatalog = selectedSubpage; break;
+		case pageDebugView: selectedDataBlock = selectedSubpage; break;
+	}
+	createUI();
+}
+
+function updateTP(state, target) {
+	let currentTP = rawData.getUint32(target.offset, defaultEndianness);
+	switch (state) {
+	case callbackCustomLoad:
+		switch (true) {
+			case (Number(currentTP) == 2100): target.value = 5; break;
+			case (Number(currentTP) >= 1500): target.value = 4; break;
+			case (Number(currentTP) >= 900):  target.value = 3; break;
+			case (Number(currentTP) >= 300):  target.value = 2; break;
+			case (Number(currentTP) >= 100):  target.value = 1; break;
+			default:                          target.value = 0; break;
+		}
+		break;
+	case callbackCustomSave:
+		// Preserve existing value if within the correct range
+		// More unnecessary edge case handling :D
+		switch (Number(target.value)) {
+			case 5: currentTP = 2100; break;
+			case 4: if ((currentTP <= 1500) || (currentTP == 2100)) currentTP = 1500; break;
+			case 3: if ((currentTP <=  900) || (currentTP >= 1500)) currentTP = 900; break;
+			case 2: if ((currentTP <=  300) || (currentTP >=  900)) currentTP = 300; break;
+			case 1: if ((currentTP <=  100) || (currentTP >=  300)) currentTP = 100; break;
+			case 0: if (currentTP >=  100) currentTP = 0; break;
+		}
+		rawData.setUint32(target.offset, currentTP, defaultEndianness);
+	}
+}
+
+function setPartyLeader(state, target) {
+	switch (state) {
+	case callbackAfterSave:
+		rawData.setUint16(target.offset + (3*4), Number(target.value), defaultEndianness);
+		updateAllParadigms(state, target);
+		break;
+	}
+}
+
+function checkPartySize() {
+	let partySize = 0;
+
+	for (let member of [
+		rawData.getUint16(partyOffset + partyMembers + (6*4), defaultEndianness),
+		rawData.getUint16(partyOffset + partyMembers + (7*4), defaultEndianness),
+		rawData.getUint16(partyOffset + partyMembers + (8*4), defaultEndianness)
+	]) {
+		if (member !== 0xFFFF) partySize++
+	}
+	return partySize;
+}
+
+function updateAllParadigms(state, target) {
+	switch (state) {
+	case callbackAfterSave:
+		for (let element of document.querySelectorAll('span.subhead + select')) loadValue(element);
+		break;
+	}
+}
+
+function updateParadigmTitle(state, target) {
+	switch (state) {
+	case callbackAfterLoad:
+	case callbackAfterSave:
+		let partySize = checkPartySize();
+		let key = [0xFF, 0xFF, 0xFF];
+		for (let i = 0; i < partySize; i++) key[i] = rawData.getUint32(target.extraData[1] + (i*4), defaultEndianness);
+		key.sort(compareNumbers);
+		key = (key[0].toString(16) + key[1].toString(16) + key[2].toString(16)).toUpperCase().slice(0, partySize);
+
+		if (paradigms.get(key) === undefined) target.extraData[0].innerText = '[Error]';
+		else target.extraData[0].innerText = paradigms.get(key);
+		break;
+	}
+}
+
+function editInventoryRow(itemId, quantity, baseOffset, position) {
+	baseOffset = baseOffset + (position * inventoryLength);
+	encodeUTF8.encodeInto(padString(itemId, idPadding, true), new Uint8Array(rawData.buffer, baseOffset + inventoryName, 16));
+	rawData.setUint32(baseOffset + inventoryQuantity, quantity, defaultEndianness);
+	createUI();
+}
+
+function editEquipmentRow(equipmentId, quantity, baseIndexOffset, indexPosition, baseEquipmentOffset, equipmentPosition) {
+	if (quantity > 0) {
+		// Write Equipment Entry
+		baseEquipmentOffset = baseEquipmentOffset + (equipmentPosition * equipmentLength);
+		encodeUTF8.encodeInto(padString(equipmentId, idPadding, true), new Uint8Array(rawData.buffer, baseEquipmentOffset + equipmentName, 16));
+		rawData.setUint8(baseEquipmentOffset + equipmentEquipped, 0);
+		rawData.setUint8(baseEquipmentOffset + equipmentLevel, 1);
+		rawData.setUint16(baseEquipmentOffset + equipmentBonus, 0, defaultEndianness);
+		rawData.setUint32(baseEquipmentOffset + equipmentEXP, 0, defaultEndianness);
+		rawData.setUint32(baseEquipmentOffset + equipmentModifier, 0, defaultEndianness);
+
+		// Write Index Entry
+		baseIndexOffset = baseIndexOffset + (indexPosition * inventoryLength);
+		encodeUTF8.encodeInto(padString('0000000_' + padString(Number(equipmentPosition).toString(16).toLowerCase(), '0000000'), idPadding, true), new Uint8Array(rawData.buffer, baseIndexOffset + inventoryName, 16));
+		rawData.setUint32(baseIndexOffset + inventoryQuantity, quantity, defaultEndianness);
+	} else {
+		// Write Equipment Entry
+		baseEquipmentOffset = baseEquipmentOffset + (equipmentPosition * equipmentLength);
+		encodeUTF8.encodeInto(padString(equipmentId, idPadding, true), new Uint8Array(rawData.buffer, baseEquipmentOffset + equipmentName, 16));
+		// No idea why these values for an empty equipment entry
+		rawData.setUint32(baseEquipmentOffset + equipmentEquipped, 0x9E930080, defaultEndianness);
+		rawData.setUint32(baseEquipmentOffset + equipmentEXP, 0x0000112C, defaultEndianness);
+		rawData.setUint32(baseEquipmentOffset + equipmentModifier, 0xFFFFFFFF, defaultEndianness);
+
+		// Write Index Entry
+		baseIndexOffset = baseIndexOffset + (indexPosition * inventoryLength);
+		encodeUTF8.encodeInto(padString('', idPadding, true), new Uint8Array(rawData.buffer, baseIndexOffset + inventoryName, 16));
+		rawData.setUint32(baseIndexOffset + inventoryQuantity, quantity, defaultEndianness);
+	}
+	createUI();
+}
+
+function removeItem(target) {
+	if (target.extraData[3] !== undefined) { // Equipment Itembag
+		editEquipmentRow('', 0, target.extraData[3], 0, equipmentOffset, parseEquipmentIndex(target.extraData[3]));
+	} else { // Normal ItemBag
+		editInventoryRow('', 0, target.offset, 0);
+	}
+}
+
+function addInventory(e) {
+	let currentSlot = e.target.extraData[0] - 1;
+	let currentOffset = e.target.offset + (currentSlot * inventoryLength);
+
+	if (rawData.getUint8(currentOffset) === 0) { // Attempt to add in first empty slot after all other entries
+		while ((rawData.getUint8(currentOffset - inventoryLength) === 0) && (currentSlot > 0)) {
+			currentOffset -= inventoryLength;
+			currentSlot--;
+		}
+		editInventoryRow(e.target.extraData[1], 1, e.target.offset, currentSlot);
+	} else { // Otherwise attempt to find first empty slot from start of list
+		currentSlot = 0;
+		currentOffset = e.target.offset;
+		while ((rawData.getUint8(currentOffset) !== 0) && (currentSlot < e.target.extraData[0])) {
+			currentOffset += inventoryLength;
+			currentSlot++;
+		}
+		if (currentSlot === e.target.extraData[0]) alert('Cannot add item. No empty inventory slots.');
+		else editInventoryRow(e.target.extraData[1], 1, e.target.offset, currentSlot);
+	}
+}
+
+function addEquipment(e) {
+	let currentEquipmentSlot = 511;
+	let currentEquipmentOffset = equipmentOffset + (currentEquipmentSlot * equipmentLength);
+	// The combined equipment index (200) + accessory index (300) is less than the equipment list (512)
+	// So there should never be a situation where we can't find an empty equipment slot
+	// But handle it regardless
+	let equipmentSlotFound = false;
+	let currentIndexSlot = e.target.extraData[0] - 1;
+	let currentIndexOffset = e.target.offset + (currentIndexSlot * inventoryLength);
+
+	// Finding empty slot in equipment table doesn't need to be "smart"
+	currentEquipmentSlot = 0;
+	currentEquipmentOffset = equipmentOffset;
+	while ((rawData.getUint8(currentEquipmentOffset) !== 0) && (currentEquipmentSlot < 512)) {
+		currentEquipmentOffset += equipmentLength;
+		currentEquipmentSlot++;
+	}
+	if (currentEquipmentSlot === 512) alert('Cannot add item. No empty equipment slots.');
+	else equipmentSlotFound = true;
+
+	if (equipmentSlotFound) {
+		// Now find index slot
+		if (rawData.getUint8(currentIndexOffset) === 0) { // Attempt to add in first empty slot after all other entries
+			while ((rawData.getUint8(currentIndexOffset - inventoryLength) === 0) && (currentIndexSlot > 0)) {
+				currentIndexOffset -= inventoryLength;
+				currentIndexSlot--;
+			}
+			editEquipmentRow(e.target.extraData[1], 1, e.target.offset, currentIndexSlot, equipmentOffset, currentEquipmentSlot);
+		} else { // Otherwise attempt to find first empty slot from start of list
+			currentIndexSlot = 0;
+			currentIndexOffset = e.target.offset;
+			while ((rawData.getUint8(currentIndexOffset) !== 0) && (currentIndexSlot < e.target.extraData[0])) {
+				currentIndexOffset += inventoryLength;
+				currentIndexSlot++;
+			}
+			if (currentIndexSlot === e.target.extraData[0]) alert('Cannot add item. No empty index slots.');
+			else editEquipmentRow(e.target.extraData[1], 1, e.target.offset, currentIndexSlot, equipmentOffset, currentEquipmentSlot);
+		}
+	}
+}
+
+function inventoryLabel(state, target) {
+	function clearItemEditors() {
+		let editors = document.querySelectorAll('.item-editor');
+		if (editors.length > 0) {
+			for (let editor of editors) {
+				loadValue(editor.parentNode);
+			}
+		}
+	}
+
+	let pending;
+	switch (state) {
+	case callbackAfterLoad:
+		// Reset properties if reloading after opening the editor
+		target.style = '';
+		target.classList.remove('active');
+
+		target.innerHTML = target.extraData[1].name[target.selectedIndex][0];
+		setNote(target);
+		break;
+	case callbackClickActivation:
+		pending = makeSpan(null, 'item-editor', '', null, null, true);
+		clearItemEditors();
+		makeSelect(pending, '', target.extraData[1].select, target.offset, target.dataType, changeInventorySlot, [16, target.extraData[1], idPadding, target]);
+		makeButton(pending, 'close-button', 'X', null, function(e) { loadValue(e.target.promptElement) }, target);
+		if ( // Not equippable, or not equipped
+			(target.extraData[3] === undefined) ||
+			(rawData.getUint8(target.offset + equipmentEquipped) === 0)
+		) {
+			makeButton(pending, 'delete-button', 'Delete', null, function(e) { removeItem(e.target.promptElement) }, target);
+		} else { // Equipped
+			makeButton(pending, 'delete-button', 'Equipped', null, function(e) { loadValue(e.target.promptElement) }, target);
+		}
+		loadValue(pending.firstChild);
+
+		// Preserve auto-computed width while <select> displayed;
+		target.style = 'width: ' + getComputedStyle(target).width + ';';
+		target.classList.add('active');
+		target.classList.remove('note');
+		target.innerHTML = target.extraData[1].name[target.selectedIndex][0]; // Remove Note but preserve text as it makes positioning the item-editor easier
+		target.appendChild(pending);
+		break;
+	}
+}
+
+function changeInventorySlot(state, target) {
+	switch (state) {
+		// loadValue() writes to innerHTML for dynamic labels, clearing <select> automatically
+		case callbackAfterSave: loadValue(target.extraData[3]); break;
+	}
+}
+
+function checkInventorySlot(offset) {
+	let stringIndex = new Uint8Array(rawData.buffer, offset, 16);
+	return (stringIndex[0] > 0) ? true : false;
+}
+
+function parseEquipmentIndex(offset) {
+	let stringIndex = new Uint8Array(rawData.buffer, offset, 16);
+	if (stringIndex[0] > 0) return Number('0x' + decodeUTF8.decode(stringIndex).split('\u0000')[0].slice(-6));
+	else                    return -1;
+}
+
+function setNote(target, value) {
+	if (target.extraData[1].notes) {
+		while (target.children.length > 0) target.removeChild(target.children[0]);
+		let note = target.extraData[1].notes[target.selectedIndex];
+		target.classList.add('note');
+
+		let pending = makeSpan(null, '', '');
+		if (value !== undefined) value = note[0].replace('??', value);
+		else value = note[0];
+		makeSpan(pending, '', 'Ability: ', 'font-weight: bold;'); makeSpan(pending, '', value + '<br>');
+		if ((note[2] + note[3]) > 0) {
+			makeSpan(pending, '', 'Modifier Range: ', 'font-weight: bold;');
+			makeSpan(pending, '', note[2] + ' - ' + note[3] + '<br>');
+		}
+		makeSpan(pending, '', 'Max Level: ', 'font-weight: bold;'); makeSpan(pending, '', note[1] + '<br>');
+		if (note[4]) {
+			makeSpan(pending, '', 'Synthesis Group: ', 'font-weight: bold;');
+			makeSpan(pending, '', note[4] + '<br>');
+		}
+		if (note[5]) {
+			makeSpan(pending, '', 'Note:<br>', 'font-weight: bold;');
+			makeSpan(pending, '', note[5] + '<br>');
+		}
+		target.appendChild(pending);
+	}
+}
+
+function modifierLabels(state, target) {
+	switch (state) {
+	case callbackAfterLoad:
+	case callbackAfterSave:
+		setNote(target.extraData[0], (target.value >= 0?'+':'') + Number(target.value));
+	}
+}
+
+function enemyIntelHandler(state, target) {
+	/*
+		Each enemy intel record is 9 bytes long but only the first 8 bytes control whether the intel is complete or not
+		The 9th byte can change after reencoutering enemy even on complete entries
+		Each bit of the first 8 bytes indicate what is "known" about that enemy
+		All 8 bytes equalling 0xFF indicates a complete entry
+		The breakdown of known bits is as follows:
+		Byte 1: 0x01 = Immunity: Daze | 0x02 = Immunity: Poison | 0x08 = Immunity: Deprotect | 0x10 = Immunity: Deshell
+
+		Byte 2: 0x01 = Resistance: Wind | 0x02 = Resistance: Earth | 0x08 = Immunity: Fog
+		Byte 2: 0x10 = Immunity: Slow | 0x20 = Immunity: Imperil | 0x40 = Immunity: Pain | 0x80 = Immunity: Curse
+
+		Byte 3: 0x04 = Resistance: Physical | 0x08 = Resistance: Magic
+		Byte 3: 0x10 = Resistance: Fire | 0x20 = Resistance: Ice | 0x40 = Resistance: Lightning | 0x80 = Resistance: Water
+
+		Byte 4: 0x02 = Name | 0x10 = HP | 0x20 = Level | 0x40 = Stagger Point | 0x80 = Chain Resistance
+
+		Byte 5: 0x01 = Common Drop | 0x02 = Rare Drop
+
+		Byte 6: 0x08 = Notes: #1 | 0x10 = Notes: #2 | 0x20 = Notes: #3 | 0x40 = Notes: #4
+
+		Byte 8: 0x08 = Immunity: Death | 0x80 = Immunity: Dispel
+	*/
+	switch (state) {
+	case callbackCustomLoad:
+		target.checked = false;
+		if (
+			(rawData.getUint32(target.offset, defaultEndianness) === 0xFFFFFFFF) &&
+			(rawData.getUint32(target.offset + 4, defaultEndianness) === 0xFFFFFFFF)
+		) {
+			target.checked = true;
+		}
+		else if (
+			(rawData.getUint32(target.offset, defaultEndianness) > 0) ||
+			(rawData.getUint32(target.offset + 4, defaultEndianness) > 0)
+		) {
+			target.indeterminate = true;
+		}
+		break;
+	case callbackCustomSave:
+		if (target.checked) {
+			rawData.setUint32(target.offset, 0xFFFFFFFF, defaultEndianness)
+			rawData.setUint32(target.offset + 4, 0xFFFFFFFF, defaultEndianness)
+		}
+		else if (!target.indeterminate) {
+			rawData.setUint32(target.offset, 0, defaultEndianness)
+			rawData.setUint32(target.offset + 4, 0, defaultEndianness)
+			rawData.setUint8(target.offset + 8, 0)
+		}
+	}
+}
+
+function bulkDatalog(e) {
+	let entries = editor.querySelectorAll('input[type="checkbox"]');
+	// Using offset here to identify button pressed
+	switch (e.target.offset) {
+	case 0://Check None
+		for (let entry of entries) {
+			entry.indeterminate = false;
+			entry.checked = false;
+			saveValue(entry);
+		}
+		break;
+	case 1://Check All
+		for (let entry of entries) {
+			if (entry.extraData === 0) {
+				entry.indeterminate = false;
+				entry.checked = true;
+				saveValue(entry);
+			}
+		}
+		break;
+	case 2://Check Incomplete (Enemy Intel)
+		for (let entry of entries) {
+			if (entry.indeterminate && entry.extraData === 0) {
+				entry.indeterminate = false;
+				entry.checked = true;
+				saveValue(entry);
+			}
+		}
+		break;
+	case 3://Check Unavailable
+		for (let entry of entries) {
+			if (entry.extraData === 1) {
+				entry.indeterminate = false;
+				entry.checked = true;
+				saveValue(entry);
+			}
+		}
+	}
+}
+
+function addUnavailableNote(target) {
+	target = makeSpan(target, 'note small', ' [?]', '');
+	makeSpan(target, '', 'Not available in normal gameplay');
+}
+
+function bonusTable(parentNode) {
+	var i, target, row, styles, wrapSize, wrapPoints;
+
+	if (document.querySelectorAll('#editor > style').length === 0) {
+		styles = document.createElement('style');
+		styles.innerText = `
+span.note:hover #exp {
+	display: grid;
+	grid-template-columns: repeat(2, auto);
+	padding: 0;
+}
+#exp span { padding: 1px 3px; }
+#exp :nth-child(-n+2) {
+	border-bottom: 2px solid black;
+	font-weight: bold;
+	font-style: italic;
+}
+#exp :nth-child(2n+1) {
+	text-align: right;
+	border-right: 1px solid black;
+	font-weight: bold;
+}
+#exp .odd { background-color: #DDA; }
+		`;
+		editor.appendChild(styles);
+	}
+
+	target = makeSpan(parentNode, 'note small', ' [?]', '');
+	target = makeSpan(target, '', '');
+	target.id = 'exp';
+
+	makeSpan(target, '', 'Value'); makeSpan(target, '', 'EXP Bonus');
+	makeSpan(target, 'odd', '0-50'); makeSpan(target, 'odd', 'x1');
+	makeSpan(target, '', '51-100'); makeSpan(target, '', 'x1.25');
+	makeSpan(target, 'odd', '101-200'); makeSpan(target, 'odd', 'x1.5');
+	makeSpan(target, '', '201-250'); makeSpan(target, '', 'x1.75');
+	makeSpan(target, 'odd', '251-500'); makeSpan(target, 'odd', 'x2');
+	makeSpan(target, '', '501+'); makeSpan(target, '', 'x3');
+}
+
+/*************************************************************************************************************************************************************
+ * GENERAL FUNCTIONS THAT SHOULD BE USABLE AMONG MULTIPLE EDITORS — LEAVE EVEN IF NOT USED IN THIS EDITOR
+ *************************************************************************************************************************************************************/
+function dataSwap(offsetA, offsetB, size) {
+	let dataA = new Uint8Array(rawData.buffer, offsetA, size);
+	let dataB = new Uint8Array(rawData.buffer, offsetB, size);
+	let dataSwap = new Uint8Array(size);
+	dataSwap.set(dataA);
+	dataA.set(dataB);
+	dataB.set(dataSwap);
+}
+
+function dataInsert(selectedRow, targetRow, dataOffset, dataRows, rowSize) {
+	let newData = new Uint8Array(dataRows * rowSize);
+	if (selectedRow > targetRow) {
+		// Start until before target row.
+		if (targetRow > 0) newData.set(new Uint8Array(rawData.buffer, dataOffset, rowSize*targetRow))
+		// Selected row.
+		newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*selectedRow), rowSize), rowSize*targetRow);
+		// Target until before selected row.
+		newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*targetRow), rowSize*(selectedRow - targetRow)), rowSize*(targetRow+1));
+		// After selected row until end.
+		if (selectedRow != dataRows) newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*(selectedRow+1)), rowSize*(dataRows-(selectedRow+1))), rowSize*(selectedRow+1));
+	}
+	else {
+		// Start until before selected row.
+		if (selectedRow > 0) newData.set(new Uint8Array(rawData.buffer, dataOffset, rowSize*selectedRow));
+		// After selected row until before target row.
+		newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*(selectedRow+1)), rowSize*(targetRow - (selectedRow+1))), rowSize*selectedRow);
+		// Selected row.
+		newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*selectedRow), rowSize), rowSize*(targetRow-1));
+		// Target row until end.
+		if (targetRow != dataRows) newData.set(new Uint8Array(rawData.buffer, dataOffset+(rowSize*targetRow), rowSize*(dataRows-targetRow)), rowSize*targetRow);
+	}
+	new Uint8Array(rawData.buffer, dataOffset, dataRows * rowSize).set(newData);
+}
+
+function removePrompt(e) { e.target.promptElement.parentNode.removeChild(e.target.promptElement); }
+
+function makeSpan(parentNode, className, innerHTML, extraStyles, extraData) {
+	let result = document.createElement('span');
+	if (className !== undefined) result.className = className;
+	if (innerHTML !== undefined) result.innerHTML = innerHTML;
+	if (extraStyles !== undefined) result.style = extraStyles;
+	if (extraData !== undefined) result.extraData = extraData;
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+function makeDynamicSpan(parentNode, className, innerHTML, offset, dataType, callback, extraStyles, extraData) {
+	let result = makeSpan(null, className, innerHTML, extraStyles, extraData)
+	result.classList.add('dynamic');
+	result.offset = offset;
+	result.dataType = dataType;
+	if (typeof callback === 'function') result._callback = callback;
+	editorFields.push(result);
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+// This always surrounds the button in a <span> as often you want to add additional elements such as a prompt to the button
+function makeButton(parentNode, className, innerHTML, offset, action, promptElement, promptValue, extraData) {
+	let container = document.createDocumentFragment();
+	makeSpan(container, (className !== undefined)?('button ' + className):'button');
+	let result = document.createElement('button');
+	if (innerHTML !== undefined) result.innerHTML = innerHTML;
+	if (offset !== undefined) result.offset = offset;
+	if (typeof action === 'function') result.addEventListener('click', action, false);
+	if (promptElement !== undefined) result.promptElement = promptElement;
+	if (promptValue !== undefined) result.promptValue = promptValue;
+	if (extraData !== undefined) result.extraData = extraData;
+	container.firstChild.appendChild(result);
+	if (parentNode !== null) parentNode.appendChild(container);
+	return container;
+}
+
+function makeSelect(parentNode, className, selectData, offset, dataType, callback, extraData) {
+	let result = document.createElement('select');
+	if (className !== undefined) result.className = className;
+	result.appendChild(selectData.dom.cloneNode(true));
+	result.offset = offset;
+	result.dataType = dataType;
+	result.array = selectData.array;
+	if (typeof callback === 'function') result._callback = callback;
+	if (extraData) result.extraData = extraData;
+	editorFields.push(result);
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+function makeCheckbox(parentNode, className, offset, dataType, callback, value, extraData, disabled, checked) {
+	let result = document.createElement('input');
+	if (className !== undefined) result.className = className;
+	result.type = 'checkbox';
+	result.offset = offset;
+	result.dataType = dataType;
+	if (typeof callback === 'function') result._callback = callback;
+	if (typeof value === 'number') result.value = value;
+	else                           result.value = 1;
+	if (extraData !== undefined) result.extraData = extraData;
+	if (disabled === true) result.disabled = true;
+	if (checked === true) result.checked = true;
+	editorFields.push(result);
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+function makeInput(parentNode, className, type, offset, dataType, callback, limits, modifier, extraData, disabled, decimal) {
+	let result = document.createElement('input');
+	result.required = true;
+	if (className !== undefined) result.className = className;
+	result.type = type;
+	if (type === 'time') result.step = 1;
+	result.offset = offset;
+	result.dataType = dataType;
+	if (typeof callback === 'function') result._callback = callback;
+	if (Array.isArray(limits)) {
+		if (type === 'number') {
+			result.min = limits[0];
+			result.max = limits[1];
+		}
+		else {
+			result.minLength = limits[0];
+			result.maxLength = limits[1];
+			result.pattern = '.{'+limits[0]+','+limits[1]+'}';
+		}
+	}
+	if (Array.isArray(modifier)) {
+		result.modifyMode = modifier[0];
+		result.modifier = modifier[1];
+	}
+	if (extraData !== undefined) result.extraData = extraData;
+	if (disabled === true) result.disabled = true;
+	if (decimal !== undefined) result.step = decimal;
+	editorFields.push(result);
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+function makeDiv(parentNode, className) {
+	let result = document.createElement('div');
+	if (className !== undefined) result.className = className;
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+function addPageButton(text, disabled) {
+	let result = document.createElement('button');
+	result.type = 'button';
+	result.value = pageButtons.length;
+	result.innerText = text;
+	if (disabled) result.disabled = disabled;
+	global.appendChild(result);
+	pageButtons.push(result);
+	return Number(result.value);
+}
+
+function addSubPageButton(text, value) {
+	let result = document.createElement('button');
+	result.type = 'button';
+	result.value = value;
+	result.innerText = text;
+	result.addEventListener('click', updateSubPage, false);
+	selector.appendChild(result);
+	selector.classList.add('active');
+	return result;
+}
+
+function buildSelectData(data) {
+	let i, j, element, entry;
+	let output = {};
+
+	output.dom = document.createDocumentFragment();
+	output.array = [];
+
+	j = 0;
+	for (i = 0; entry = data[i]; i++) {
+		if (entry[2] === 1) {
+			element = document.createElement('optgroup');
+			element.label = entry[0];
+			output.dom.appendChild(element);
+		}
+		else if (debug || entry[2] !== 2) {
+			element = document.createElement('option');
+			if (typeof entry[1] === 'number') {
+				element.innerHTML = ((debug)?padString(Number(entry[1]).toString(16).toUpperCase(),'00') + ': ':'') + entry[0] + ((typeof entry[2] === 'string')?' [' + entry[2] + ']':'');
+			} else {
+				element.innerHTML = ((debug)?entry[1] + ': ':'') + entry[0] + ((typeof entry[2] === 'string')?' [' + entry[2] + ']':'');
+			}
+			element.value = entry[1];
+			if (output.dom.lastChild &&
+				output.dom.lastChild.tagName.match(/optgroup/i)) output.dom.lastChild.appendChild(element);
+			else                                                 output.dom.appendChild(element);
+			output.array[entry[1]] = j;
+			j++;
+		}
+	}
+	return output;
+}
+
+function displayDataBlock(start, blocks, selectedBlock) {
+	// TextDecoders only work on ArrayBuffers, TypedArrays, or DataViews not meant for byte by byte decoding
+	// Just use a fixed array filled with windows-1252 mappings
+	let encoding = [
+		'.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.','.',
+		' ','!','"','#','$','%','&','\'','(',')','*','+',',','-','.','/','0','1','2','3','4','5','6','7','8','9',':',';','<','=','>','?',
+		'@','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','[','\\',']','^','_',
+		'`','a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z','{','|','}','~','.',
+		'€','.','‚','ƒ','„','…','†','‡','ˆ','‰','Š','‹','Œ','.','Ž','.','.','‘','’','“','”','•','–','—','˜','™','š','›','œ','.','ž','Ÿ',
+		' ','¡','¢','£','¤','¥','¦','§','¨','©','ª','«','¬','.','®','¯','°','±','²','³','´','µ','¶','·','¸','¹','º','»','¼','½','¾','¿',
+		'À','Á','Â','Ã','Ä','Å','Æ','Ç','È','É','Ê','Ë','Ì','Í','Î','Ï','Ð','Ñ','Ò','Ó','Ô','Õ','Ö','×','Ø','Ù','Ú','Û','Ü','Ý','Þ','ß',
+		'à','á','â','ã','ä','å','æ','ç','è','é','ê','ë','ì','í','î','ï','ð','ñ','ò','ó','ô','õ','ö','÷','ø','ù','ú','û','ü','ý','þ','ÿ'
+	]
+	function createHexRow(start, length, grouping, padding) {
+		let i, outputOffset = '', outputBytes = '', outputText = '';
+		let bytes = new Uint8Array(rawData.buffer, start, length);
+		let spanOpen = false;
+		let characterCount = 0;
+		outputOffset += '0x' + padString(readOffset.toString(16), '00000').toUpperCase();
+		for (i = 0; i < length; i++) {
+			if (bytes[i] === 0 && !spanOpen) {
+				outputBytes += '<span style="color: #888;">';
+				spanOpen = true;
+			}
+			else if (bytes[i] !== 0 && spanOpen){
+				outputBytes += '</span>';
+				spanOpen = false;
+			}
+			outputBytes += padString(bytes[i].toString(16), '00').toUpperCase();
+			if (((i+1) % grouping == 0) && ((i+1) < length)) {
+				outputBytes += ' ';
+				characterCount += 3;
+			} else {
+				characterCount += 2;
+			}
+			outputText += encoding[bytes[i]];
+		}
+		// Normalise line end padding
+		if (spanOpen) outputBytes += '</span>';
+		if (padding !== undefined) {
+			outputBytes += ''.padEnd(((2 * padding) + ((padding / grouping)) - characterCount) - 1, ' ');
+		}
+		return outputOffset + '  ' + outputBytes + '  ' + outputText + '<br>';
+	}
+
+	function outputSection(sectionWrapLength, sectionLength, grouping) {
+		while ((sizeRemaining >= sectionWrapLength) && (sectionLength >= sectionWrapLength)) {
+			makeSpan(pending, 'monospace', createHexRow(baseOffset + readOffset, sectionWrapLength, grouping));
+			readOffset += sectionWrapLength;
+			sizeRemaining -= sectionWrapLength;
+			sectionLength -= sectionWrapLength;
+		}
+		// loop exited because remaining sectionLength is less than will occupy a full sectionWrapLength
+		if ((sectionLength > 0)) {
+			makeSpan(pending, 'monospace', createHexRow(baseOffset + readOffset, sectionLength, grouping, sectionWrapLength));
+			readOffset += sectionLength;
+			sizeRemaining -= sectionLength;
+		}
+	}
+	let i, defaultWrapLength, baseOffset, readOffset, dataBlock, sizeRemaining, pending;
+
+	baseOffset = start;
+	readOffset = 0;
+	defaultWrapLength = 0x20;
+	for (i = 0; i < blocks.length; i++) {
+		if (i < selectedBlock) baseOffset += blocks[i][1]
+	}
+
+	dataBlock = blocks[selectedBlock];
+	sizeRemaining = dataBlock[1];
+
+	pending = makeDiv(null, 'gridOne tight-spacing');
+	makeSpan(pending, '', 'Name: ' + dataBlock[0]);
+	makeSpan(pending, '', 'Base Offset: 0x' + baseOffset.toString(16).toUpperCase());
+	makeSpan(pending, '', 'Size: 0x' + dataBlock[1].toString(16).toUpperCase());
+	for (let value of dataBlock[2]) {
+		makeSpan(pending, '', value)
+	}
+
+/*****************************************************************************
+ * The data block formatting section is messily designed but works well enough
+ * for its intended debugging & experimenting purposes
+ * Each array entry is either a single value array containing a string indicating a header
+ * Or an array of three values: [bytes to display in a line, total length, byte grouping]
+ *****************************************************************************/
+	if (dataBlock[3] !== undefined) {
+		for (i = 0; i < dataBlock[3].length; i++) {
+			if (typeof dataBlock[3][i][0] === 'string') makeSpan(pending, 'monospace', '————————————————————' + dataBlock[3][i][0] + '————————————————————<br>');
+			else outputSection(dataBlock[3][i][0], dataBlock[3][i][1], dataBlock[3][i][2]);
+		}
+	}
+	if (sizeRemaining > 0) {
+		outputSection(defaultWrapLength, sizeRemaining, 1)
+	}
+	editor.appendChild(pending);
+}
+
+function testDateInput() {
+	let test = document.createElement('input');
+	test.type = 'date';
+	if (test.type = 'date') {
+		test.type = 'time'
+		if (test.type = 'time') { return true; }
+		else { return false; }
+	}
+	else { return false; }
+}
+
+function loadAllValues() {
+	for (let field of editorFields) loadValue(field);
+}
+
+function loadValue(target) {
+	let rawValue;
+	switch (target.dataType) {
+	case custom:
+		target._callback(callbackCustomLoad, target); break;
+	case uint8:
+		target.value = rawData.getUint8(target.offset); break;
+	case int8:
+		target.value = rawData.getInt8(target.offset); break;
+	case uint16:
+		target.value = rawData.getUint16(target.offset, defaultEndianness); break;
+	case int16:
+		target.value = rawData.getInt16(target.offset, defaultEndianness); break;
+	case uint32:
+		target.value = rawData.getUint32(target.offset, defaultEndianness); break;
+	case int32:
+		target.value = rawData.getInt32(target.offset, defaultEndianness); break;
+	case uint64:
+		target.value = rawData.getBigUint64(target.offset, defaultEndianness); break;
+	case int64:
+		target.value = rawData.getBigInt64(target.offset, defaultEndianness); break;
+	case float32:
+		target.value = rawData.getFloat32(target.offset, defaultEndianness).toFixed(1); break;
+	case arrayIndexed8:
+		target.selectedIndex = target.array[rawData.getUint8(target.offset)]; break;
+	case arrayIndexed16:
+		target.selectedIndex = target.array[rawData.getUint16(target.offset, defaultEndianness)]; break;
+	case arrayIndexed32:
+		target.selectedIndex = target.array[rawData.getUint32(target.offset, defaultEndianness)]; break;
+	case arrayStringIndexed:
+		rawValue = new Uint8Array(rawData.buffer, target.offset, target.extraData[0])
+		target.selectedIndex = target.extraData[1].id.get(decodeUTF8.decode(rawValue).split('\u0000')[0]);
+		break;
+	case checkbox8:
+		rawValue = rawData.getUint8(target.offset);
+		if (rawValue == target.value) target.checked = true;
+		else                          target.checked = false;
+		break;
+	case text:
+		rawValue = new Uint8Array(rawData.buffer, target.offset, target.extraData[0]);
+		target.value = decodeUTF8.decode(rawValue).split('\u0000')[0];
+		break;
+	case bitmask:
+		rawValue = rawData.getUint8(target.offset + Math.floor(target.value/8))
+		if ((rawValue & (2**(target.value%8))) == (2**(target.value%8))) target.checked = true;
+		else                                                             target.checked = false;
+		break;
+	case debugToString:
+		rawValue = Array.from(new Uint8Array(rawData.buffer, target.offset, target.extraData));
+		for (let i = 0; i < rawValue.length; i++) rawValue[i] = padString(rawValue[i].toString(16), '00').toUpperCase();
+		target.innerText = rawValue.join(' ');
+		break;
+	}
+	// Does not currently support 64 bit values due to having to use BigInt
+	if (target.modifyMode) {
+		switch (target.modifyMode) {
+			case modAdd: target.value = target.value + target.modifier; break;
+			case modSubtract: target.value = target.value - target.modifier; break;
+			case modMultiply: target.value = target.value * target.modifier; break;
+			case modDivide: target.value = target.value / target.modifier; break;
+		}
+	}
+	if ((target._callback) && (target.dataType != custom)) target._callback(callbackAfterLoad, target);
+}
+
+function valueChanged(e) { saveValue(e.target); }
+
+function saveValue(target) {
+	let rawValue;
+	// Load existing value if newly entered value invalid
+	if (target.checkValidity()) {
+		setFileDirty(true);
+		// Empty strings are not considered invalid
+		// Check for .value too.
+		if (target.offset && target.dataType && target.value) {
+			if ((target._callback) && (target.dataType != custom)) target._callback(callbackBeforeSave, target);
+
+			// Does not currently support 64 bit values due to having to use BigInt
+			// Value is reloaded from element in switch below in those cases
+			if (target.modifyMode) {
+				switch (target.modifyMode) {
+					// Constants refer to loading, reverse action when saving
+					case modAdd: rawValue = target.value - target.modifier; break;
+					case modSubtract: rawValue = target.value + target.modifier; break;
+					case modMultiply: rawValue = target.value / target.modifier; break;
+					case modDivide: rawValue = target.value * target.modifier; break;
+				}
+			}
+			else {
+				rawValue = target.value;
+			}
+
+			switch (target.dataType) {
+			case custom:
+				target._callback(callbackCustomSave, target); break;
+			case uint8:
+				rawData.setUint8(target.offset, rawValue); break;
+			case int8:
+				rawData.setInt8(target.offset, rawValue); break;
+			case uint16:
+				rawData.setUint16(target.offset, rawValue, defaultEndianness); break;
+			case int16:
+				rawData.setInt16(target.offset, rawValue, defaultEndianness); break;
+			case uint32:
+				rawData.setUint32(target.offset, rawValue, defaultEndianness); break;
+			case int32:
+				rawData.setInt32(target.offset, rawValue, defaultEndianness); break;
+			case uint64:
+				rawValue = BigInt(target.value);
+				rawData.setBigUint64(target.offset, rawValue, defaultEndianness);
+				break;
+			case int64:
+				rawValue = BigInt(target.value);
+				rawData.setBigInt64(target.offset, rawValue, defaultEndianness);
+				break;
+			case float32:
+				rawData.setFloat32(target.offset, rawValue, defaultEndianness); break;
+			case arrayIndexed8:
+				rawData.setUint8(target.offset, Number(rawValue)); break;
+			case arrayIndexed16:
+				rawData.setUint16(target.offset, Number(rawValue), defaultEndianness); break;
+			case arrayIndexed32:
+				rawData.setUint32(target.offset, Number(rawValue), defaultEndianness); break;
+			case arrayStringIndexed:
+				if (typeof target.extraData[2] === 'string') encodeUTF8.encodeInto(padString(rawValue, target.extraData[2], true), new Uint8Array(rawData.buffer, target.offset, target.extraData[0]));
+				else                                         encodeUTF8.encodeInto(rawValue + '\u0000', new Uint8Array(rawData.buffer, target.offset, target.extraData[0]));
+				break;
+			case checkbox8:
+				if (target.checked) rawData.setUint8(target.offset, target.value);
+				else                rawData.setUint8(target.offset, 0);
+				break;
+			case text:
+				if (typeof target.extraData[1] === 'string') encodeUTF8.encodeInto(padString(rawValue, target.extraData[1], true), new Uint8Array(rawData.buffer, target.offset, target.extraData[0]));
+				else                                         encodeUTF8.encodeInto(rawValue + '\u0000', new Uint8Array(rawData.buffer, target.offset, target.extraData[0]));
+				break;
+			case bitmask:
+				// Set up mask
+				rawValue = 0xFF - (2**(target.value%8));
+				// Passthrough all bits except the one we're changing
+				rawValue = rawData.getUint8(target.offset + Math.floor(target.value/8)) & rawValue;
+				if (target.checked) rawValue += (2**(target.value%8))
+				rawData.setUint8(target.offset + Math.floor(target.value/8), rawValue);
+				break;
+			}
+		}
+		if ((target._callback) && (target.dataType != custom)) target._callback(callbackAfterSave, target);
+	}
+}
+
+function debugString(byteArray, grouping, spacer) {
+	let i, output = '';
+	if ((spacer === null) || (spacer === undefined)) spacer = '';
+	for (i = 0; i < byteArray.length; i++) {
+		output += padString(byteArray[i].toString(16), '00').toUpperCase() + spacer;
+		if ((i+1) % grouping == 0) output += ' '
+	}
+	return output.trimEnd();
+}
+
+// Warnings array flags selected bytes red — use for testing unconfirmed bytes
+function debugStringBuffer(start, length, spacer, warnings, toString) {
+	if (warnings === undefined) warnings = [];
+	let i, output = '';
+	let bytes = new Uint8Array(rawData.buffer, start, length);
+	if ((spacer === null) || (spacer === undefined)) spacer = '';
+	for (i = 0; i < length; i++) {
+		if ((warnings[i] === 1) && bytes[i]) output += '<span class=warning>';
+		else if (warnings[i] === 0)          output += '<span class=good>';
+		output += padString(bytes[i].toString(16), '00').toUpperCase() + spacer;
+		if (((warnings[i] === 1) && bytes[i]) || warnings[i] === 0) output += '</span>'
+		if ((i+1) % 4 == 0) output += ' '
+	}
+	if (toString) output = decodeUTF8.decode(bytes) + ' (' + output.trimEnd() + ')';
+	return output.trimEnd()
+}
+
+function loadData(gameType) {
+	// Index doesn't really ever change or get used outside of the debug view. So it could be hard-coded.
+	// But it is more interesting to load it dynamically.
+	function loadIndex() {
+		let currentBlock, dataBlocks = [];
+		let currentOffset = indexOffset;
+
+		while (currentOffset < dataBlocksOffset) {
+			currentBlock = [];
+			currentBlock.push(decodeUTF8.decode(new Uint8Array(rawData.buffer, currentOffset, 16)).split('\u0000')[0]);
+			currentBlock.push(rawData.getUint32(currentOffset + indexBlockSize, LE));
+			currentBlock.push([
+				'Unknown 1: ' + rawData.getUint32(currentOffset + indexUnknown1, LE),
+				'Unknown 2: ' + rawData.getUint32(currentOffset + indexUnknown2, LE),
+				'Unknown 3: ' + rawData.getUint32(currentOffset + indexUnknown3, LE)
+			]);
+			// Blocks may be stored either big or little endian (but usually little endian)
+			// Attempt to detect by checking if a block size is larger than the total filesize
+			if (currentBlock[1] > fileSize) {
+				currentBlock[1] = rawData.getUint32(currentOffset + indexBlockSize, BE);
+				currentBlock[2] = [
+					'Unknown 1: ' + rawData.getUint32(currentOffset + indexUnknown1, BE),
+					'Unknown 2: ' + rawData.getUint32(currentOffset + indexUnknown2, BE),
+					'Unknown 3: ' + rawData.getUint32(currentOffset + indexUnknown3, BE)
+				];
+			}
+
+			dataBlocks.push(currentBlock);
+			currentOffset += indexLength;
+		}
+		return dataBlocks;
+	}
+
+	function prepareStringIndexedArray(stringArray, sourceData) {
+		let indexCount = 0;
+		stringArray.select = buildSelectData(sourceData);
+		stringArray.id = new Map();
+		stringArray.name = []
+		for (let entry of sourceData) {
+			// Exclude header entries;
+			if (entry[2] != 1) {
+				stringArray.id.set(entry[1], indexCount)
+				stringArray.name.push(entry)
+				indexCount++;
+			}
+		}
+	}
+
+	dataBlocks = loadIndex();
+	//selectedDataBlock = 47;
+	//defaultPage(pageDebugView);
+	// Party Composition
+		dataBlocks[2][3] = [["Party"], [0x4, 0x4*10, 4], ["Unknown"], [0x7, 0x7, 1], ["Technical Points"], [0x4, 0x4, 4], ["Default Paradigm"], [0xC, 0xC, 4], ["Unknown"], [0x4, 0x4, 4], ["Paradigms"], [0xC, 0xC*8, 4], ["Unknown"]];
+		for (let i of [3,4,5]) dataBlocks[i][3] = dataBlocks[2][3];
+	// Party Members
+		dataBlocks[6][3] = [
+			[0x4, 0x1, 2],[0x4, 0x4, 2],
+			["ID"],[0x10, 0x10, 4],
+			["Unknown"],[0x1, 0x1, 1],[0x10, 0x10, 2],
+			["Abilities"],[0x10*4, 0x2, 16],[0x10*4, 0x10*192, 16], // Guessed length
+			["Role Levels"],[0x4*6, 0x4*6, 4],// Same order as role level ids in the db_party???? blocks
+			["Stats"],[0x4*10, 0x1, 4],[0x4*10, 0x4*60, 4], // Guessed length
+			["Unknown"],[0x16, 0x16, 1],
+			["Weapon Index"],[0x4, 0x4, 4],
+			["Accessory Indexes"],[0x4, 0x4*4, 4],
+			["Unknown"],
+		]
+		for (let i of [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,34,36,37]) dataBlocks[i][3] = dataBlocks[6][3];
+	// Recent Inventory
+		dataBlocks[38][3] = [[0x4, 0x4, 4], ["Unviewed Items"], [0x14, 0x14*20, 4]];
+	// Item Bags
+		dataBlocks[39][3] = [[0x4, 0x4, 4], ["Items"], [0x14, 0x14*50, 4], ["Unknown"], [0x4, 0x4*50, 4]];
+		// Index suggests 194 entries, but 200 makes more sense and fits the pattern of the other ItemBags
+		dataBlocks[40][3] = [[0x4, 0x4, 4], ["Weapon Index"], [0x14, 0x14*200, 4], ["Unknown"], [0x4, 0x4*200, 4]];
+		dataBlocks[41][3] = [[0x4, 0x4, 4], ["Accessory Index"], [0x14, 0x14*300, 4], ["Unknown"], [0x4, 0x4*300, 4]];
+		dataBlocks[42][3] = [[0x4, 0x4, 4], ["Components"], [0x14, 0x14*200, 4], ["Unknown"], [0x4, 0x4*200, 4]];
+		dataBlocks[43][3] = [[0x4, 0x4, 4], ["Key Items"], [0x14, 0x14*50, 4], ["Unknown"], [0x4, 0x4*50, 4]];
+	// Crystarium/Datalog/More?
+		dataBlocks[47][3] = [
+			["Features Unlocked / Viewed"],[0x10, 0x8, 4],
+			["Datalog: History and Myth"],[0x10, 0x10, 4],
+			["Datalog: Locales"],[0x10, 0x10, 4],
+			["Datalog: Cocoon Society"],[0x10, 0x10, 4],
+			["Datalog: The Fal'Cie"],[0x10, 0x10, 4],
+			["Datalog: The Thirteen Days"],[0x10, 0x10, 4],
+			["Datalog: Analects"],[0x10, 0x10, 4],
+			["Datalog: People"],[0x10, 0x10, 4],
+			["Datalog: Events"],[0x10, 0x20, 4],
+			["Datalog: Unused"],[0x10, 0x10, 4],
+			["Datalog: Primers: Gameplay Basics"],[0x10, 0x10, 4],
+			["Datalog: Primers: The Main Menu"],[0x10, 0x10, 4],
+			["Datalog: Primers: Battle"],[0x10, 0x10, 4],
+			["Datalog: Primers: Exploration"],[0x10, 0x10, 4],
+			["Unknown"],[0x8, 0x8*5, 4],
+			["Shop Merchandise Viewed"],[0x8, 0x8, 4],
+			["Unknown"],[0x8, 0x8*3, 4],
+			["Lightning Crystarium: Commando"], [0x21, 0x186, 3], ["Lightning Crystarium: Ravager"], [0x21, 0x195, 3], ["Lightning Crystarium: Sentinel"], [0x21, 0xDB, 3], ["Lightning Crystarium: Synergist"], [0x21, 0xDB, 3],
+			["Lightning Crystarium: Medic"], [0x21, 0x159, 3], ["Lightning Crystarium: Saboteur"], [0x21, 0xDB, 3], ["Lightning Crystarium: Unused"], [0x42, 0x1FB, 3],
+			["Snow Crystarium: Commando"], [0x21, 0x147, 3], ["Snow Crystarium: Ravager"], [0x21, 0x144, 3], ["Snow Crystarium: Sentinel"], [0x21, 0x156, 3], ["Snow Crystarium: Synergist"], [0x21, 0xDB, 3],
+			["Snow Crystarium: Medic"], [0x21, 0xDB, 3], ["Snow Crystarium: Saboteur"], [0x21, 0xDB, 3], ["Snow Crystarium: Unused"], [0x42, 0x28E, 3],
+			["Sazh Crystarium: Commando"], [0x21, 0x13E, 3], ["Sazh Crystarium: Ravager"], [0x21, 0x18F, 3], ["Sazh Crystarium: Sentinel"], [0x21, 0xDB, 3], ["Sazh Crystarium: Synergist"], [0x21, 0x165, 3],
+			["Sazh Crystarium: Medic"], [0x21, 0xDB, 3], ["Sazh Crystarium: Saboteur"], [0x21, 0xDB, 3], ["Sazh Crystarium: Unused"], [0x42, 0x23D, 3],
+			["Fang Crystarium: Commando"], [0x21, 0x174, 3], ["Fang Crystarium: Ravager"], [0x21, 0xDB, 3], ["Fang Crystarium: Sentinel"], [0x21, 0x16B, 3], ["Fang Crystarium: Synergist"], [0x21, 0xDB, 3],
+			["Fang Crystarium: Medic"], [0x21, 0xDB, 3], ["Fang Crystarium: Saboteur"], [0x21, 0x174, 3], ["Fang Crystarium: Unused"], [0x42, 0x21C, 3],
+			["Vanille Crystarium: Commando"], [0x21, 0xDB, 3], ["Vanille Crystarium: Ravager"], [0x21, 0x18C, 3], ["Vanille Crystarium: Sentinel"], [0x21, 0xDB, 3], ["Vanille Crystarium: Synergist"], [0x21, 0xDB, 3],
+			["Vanille Crystarium: Medic"], [0x21, 0x177, 3], ["Vanille Crystarium: Saboteur"], [0x21, 0x171, 3], ["Vanille Crystarium: Unused"], [0x42, 0x1FB, 3],
+			["Hope Crystarium: Commando"], [0x21, 0xDB, 3], ["Hope Crystarium: Ravager"], [0x21, 0x171, 3], ["Hope Crystarium: Sentinel"], [0x21, 0xDB, 3], ["Hope Crystarium: Synergist"], [0x21, 0x17A, 3],
+			["Hope Crystarium: Medic"], [0x21, 0x168, 3], ["Hope Crystarium: Saboteur"], [0x21, 0xDB, 3], ["Hope Crystarium: Unused"], [0x42, 0x21C, 3],
+			["Enemy Intel"], [0x9, 0xD80, 8],
+			["Viewed Enemy Intel"], [0x4, 0x2C, 4],
+			["Unknown"], [0x4, 0x58, 4],
+		];
+	// Equipment
+		dataBlocks[48][3] = [["Equipment"], [0x1C, 0x3800, 4], ["Unknown"], [0x04, 0x800, 4]];
+
+	if (!debug) {
+		characters = JSON.parse(`{
+			"id":[["[none]", 65535],
+				["Lightning", 13],["Sazh", 14],["Snow", 16],["Hope", 11],
+				["Vanille", 17],["Fang", 9],["Gadot", 10],["Lebreau", 12]
+			],
+			"name":["Lightning", "Sazh", "Snow", "Hope", "Vanille", "Fang"]
+		}`)
+	} else {
+		characters = JSON.parse(`{
+			"id":[["[none]", 65535],
+				["Lightning", 13],["Sazh", 14],["Snow", 16],["Hope", 11],
+				["Vanille", 17],["Fang", 9],["Gadot", 10],["Lebreau", 12],
+				["[boss]", 0],["[change_dummy]", 1],["[cho_fa]", 2],["[cho_ho]", 3],
+				["[cho_lt]", 4],["[cho_sn]", 5],["[cho_sz]", 6],["[cho_vn]", 7],
+				["[doge]", 8],["[sera]", 15],["[unknown 18]", 18],["[unknown 19]", 19],
+				["[unknown 20]", 20],["[unknown 21]", 21],["[unknown 22]", 22],["[unknown 23]", 23],
+				["[unknown 24]", 24],["[unknown 25]", 25],["[unknown 26]", 26],["[unknown 27]", 27],
+				["[unknown 28]", 28],["[unknown 29]", 29],["[unknown 30]", 30],["[unknown 31]", 31]
+			],
+			"name":[
+				"Lightning", "Sazh", "Snow", "Hope", "Vanille", "Fang", "Gadot", "Lebreau",
+				"boss", "change_dummy", "cho_fa", "cho_ho", "cho_lt", "cho_sn", "cho_sz", "cho_vn",
+				"doge", "sera", "unknown18", "unknown19", "unknown20", "unknown21", "unknown22", "unknown23",
+				"unknown24", "unknown25", "unknown26", "unknown27", "unknown28", "unknown29", "unknown30", "unknown31"
+			]
+		}`)
+	};
+
+	roles = [
+		['Commando', 1],['Ravager', 2],['Sentinel', 0],['Saboteur', 4],['Synergist', 3],['Medic', 5],["[none]", 0xFFFFFFFF]
+	];
+
+	paradigms = new Map(
+		[["0", "Sentinel"],["1", "Commando"],["2", "Ravager"],["3", "Synergist"],["4", "Saboteur"],["5", "Medic"],
+		["00", "Twin Shields"],["01", "Misdirection"],["02", "Arcane Defense"],["03", "Building Block"],["04", "Stumbling Block"],["05", "Lifeguard"],
+		["11", "Double Trouble"],["12", "Slash & Burn"],["13", "Supersoldier"],["14", "Divide & Conquer"],["15", "War & Peace"],
+		["22", "Dualcasting"],["23", "Archmage"],["24", "Undermine"],["25", "Yin & Yang"],
+		["33", "Rally"],["34", "Tide Turner"],["35", "Symbiosis"],
+		["44", "Havoc"],["45", "Sap & Salve"],
+		["55", "Double Dose"],
+		["000", "Tortoise"],["001", "Guarded Assault"],["002", "Patient Probing"],["003", "Conservation"],["004", "Overcaution"],["005", "Consolidation"],
+		["011", "Offensive Screen"],["012", "Delta Attack"],["013", "Strategic Warfare"],["014", "Dirty Fighting"],["015", "Solidarity"],
+		["022", "Mystic Tower"],["023", "Riot Shield"],["024", "Matador"],["025", "Entourage"],
+		["033", "Prudent Planning"],["034", "Premeditation"],["035", "Protection"],
+		["044", "Countermeasure"],["045", "Attrition"],
+		["055", "Combat Clinic"],
+		["111", "Cerberus"],["112", "Aggression"],["113", "Strike Team"],["114", "Devastation"],["115", "Tireless Charge"],
+		["122", "Relentless Assault"],["123", "Decimation"],["124", "Ruthless"],["125", "Diversity"],
+		["133", "All for One"],["134", "Bully"],["135", "Hero's Charge"],
+		["144", "Exploitation"],["145", "Scouting Party"],
+		["155", "Discretion"],
+		["222", "Tri-disaster"],["223", "Malevolence"],["224", "Smart Bomb"],["225", "Thaumaturgy"],
+		["233", "Supernatural"],["234", "Guerilla"],["235", "Coordination"],
+		["244", "Assassination"],["245", "Variety"],
+		["255", "Perpetual Magic"],
+		["333", "Rapid Growth"],["334", "Superiority"],["335", "Recuperation"],
+		["344", "Espionage"],["345", "Evened Odds"],
+		["355", "Convalescence"],
+		["444", "Infiltration"],["445", "Safe Subversion"],
+		["455", "Perseverance"],
+		["555", "Salvation"],
+		["F", "[Empty]"],["FF", "[Empty]"],["FFF", "[Empty]"]]
+	)
+
+	datalog = [
+		["Events", 7, 0xFFFE],
+		["Chapter 1", 7, 0xFFFF],
+			["Defiers of Fate", 24, 0],["Fields of War", 25, 0],["Another Rebellion", 26, 0],["The Warpath Home", 27, 0],["Fallen Innocence", 28, 0],["The Fal'Cie Awaits", 29, 0],["Into the Vestige", 30, 0],["Fates Intertwined", 31, 0],
+		["Chapter 2", 7, 0xFFFF],
+			["In Pursuit of Snow", 16, 0],["Where Men Fear to Tread", 17, 0],["Open Doors Beckon", 18, 0],["In the Shadow of L'Cie", 19, 0],["Saving the Enemy", 20, 0],["The Gift of Eternity", 21, 0],["Pulsian Menace", 22, 0],["Bound in Darkness", 23, 0],
+		["Chapter 3", 7, 0xFFFF],
+			["Branded", 8, 0],["A Vision Shared", 9, 0],["Partings and Promises", 10, 0],["Casting the Net", 11, 0],["The Only Way is Up", 12, 0],["The Twin Sisters", 13, 0],
+		["Chapter 4", 7, 0xFFFF],
+			["Nothing but Grief", 14, 0],["I Wanna Be Purged", 15, 0],["Hope and Despair", 0, 0],["Taking in the Trash", 1, 0],["Fugitives in Futility", 2, 0],["Eden or Bust", 3, 0],["Thunderous Hooves", 4, 0],["Loathing and Fear", 5, 0],["Cold, Hard Fact", 6, 0],["Separate Paths", 7, 0],
+		["Chapter 5", 7, 0xFFFF],
+			["A Strategy for Change", 56, 0],["Weapon of Choice?", 57, 0],["The Price of Vanity", 58, 0],["No Rules", 59, 0],["Of Revenge and Regret", 60, 0],["Operation Nora", 61, 0],["Driving Forces", 62, 0],
+		["Chapter 6", 7, 0xFFFF],
+			["Sun-dappled Flight", 63, 0],["A Wish for Daddy", 48, 0],["Father and Son", 49, 0],["Chain of Events", 50, 0],
+		["Chapter 7", 7, 0xFFFF],
+			["The Capital of Commerce", 51, 0],["Under Their Noses", 52, 0],["No Way to Live", 53, 0],["The Weight of Vengeance", 54, 0],["It's Called Interference", 55, 0],["The Pulse L'Cie", 40, 0],["Mob Injustice", 41, 0],["Over the Edge", 42, 0],["Until She Wakes", 43, 0],["Sustained by Hate", 44, 0],["Healing the Rifts", 45, 0],["Here Comes the Cavalry", 46, 0],
+		["Chapter 8", 7, 0xFFFF],
+			["The City of Dreams", 47, 0],["Making the Most of It", 32, 0],["Eidolons on Parade", 33, 0],["No Place Left to Run", 34, 0],["The Euride Incident", 35, 0],["Sugar and Rainbows", 36, 0],
+		["Chapter 9", 7, 0xFFFF],
+			["The Sanctum Skyfleet", 37, 0],["The <i>Palamecia</i>", 38, 0],["Time to Split", 39, 0],["Luck Be a Lady", 152, 0],["A Focus Revealed", 153, 0],
+		["Chapter 10", 7, 0xFFFF],
+			["What Fal'Cie Want", 154, 0],["The Power Within", 155, 0],["The Dreams of Man", 156, 0],["On Wings of Misery", 157, 0],["Terra Incognita", 158, 0],
+		["Chapter 11", 7, 0xFFFF],
+			["A Fruitless Search", 159, 0],["A Man's Hope Is His Castle", 144, 0],["Helping Hands", 145, 0],["Speaking with Serah", 146, 0],["Dust to Dust", 147, 0],["Their Own Worst Enemy", 148, 0],["The Road Home", 149, 0],
+		["Chapter 12", 7, 0xFFFF],
+			["Start Your Engines", 150, 0],["Eden Under Siege", 151, 0],["A Common Goal", 136, 0],["Misjudged Benevolence", 137, 0],
+		["Chapter 13", 7, 0xFFFF],
+			["The Cradle Will Fall", 138, 0],
+		["People", 6, 0xFFFE],
+			["Lightning (Version 1)", 24, 0],["Lightning (Version 2)", 25, 0],["Lightning (Version 3)", 26, 0],
+			["Snow Villiers (Version 1)", 27, 0],["Snow Villiers (Version 2)", 28, 0],
+			["Sazh Katzroy (Version 1)", 29, 0],["Sazh Katzroy (Version 2)", 30, 0],["Sazh Katzroy (Version 3)", 31, 0],
+			["Hope Estheim (Version 1)", 16, 0],["Hope Estheim (Version 2)", 17, 0],["Hope Estheim (Version 3)", 18, 0],
+			["Vanille (Version 1)", 19, 0],["Vanille (Version 2)", 20, 0],["Oerba Dia Vanille (Version 1)", 21, 0],["Oerba Dia Vanille (Version 2)", 22, 0],["Oerba Dia Vanille (Version 3)", 23, 0],
+			["Mysterious Woman", 8, 0],["Oerba Yun Fang (Version 1)", 9, 0],["Oerba Yun Fang (Version 2)", 10, 0],
+			["Serah Farron (Version 1)", 11, 0],["Serah Farron (Version 2)", 12, 0],
+			["Dajh Katzroy (Version 1)", 13, 0],["Dajh Katzroy (Version 2)", 14, 0],
+			["Nora Estheim", 15, 0],["Bartholomew Estheim (Version 1)", 0, 0],["Bartholomew Estheim (Version 2)", 1, 0],
+			["Galenth Dysley (Version 1)", 2, 0],["Galenth Dysley (Version 2)", 3, 0],
+			["Cid Raines (Version 1)", 4, 0],["Cid Raines (Version 2)", 5, 0],["Cid Raines (Version 3)", 6, 0],["Cid Raines (Version 4)", 7, 0],
+			["Yaag Rosch (Version 1)", 56, 0],["Yaag Rosch (Version 2)", 57, 0],
+			["Jihl Nabaat (Version 1)", 58, 0],["Jihl Nabaat (Version 2)", 59, 0],
+			["Rygdea (Version 1)", 60, 0],["Rygdea (Version 2)", 61, 0],
+			["Amodar", 62, 0],["Gadot", 63, 0],["Lebreau", 48, 0],["Maqui", 49, 0],["Yuj", 50, 0],
+			["Chocobo Chick (Version 1)", 51, 0],["Chocobo Chick (Version 2)", 52, 0],
+		["The Thirteen Days", 4, 0xFFFE],
+			["Day One: Awakening", 25, 0],["Day Two: Opposition", 26, 0],["Day Three: Escalation", 27, 0],["Day Four: Searching", 28, 0],["Day Five: Euride", 29, 0],["Day Five: Contact", 30, 0],["Day Five: Good-bye", 31, 0],["Day Six: Alliance", 16, 0],
+			["Day Seven: Revelation", 17, 0],["Day Eight: Questions", 18, 0],["Day Nine: Serendipity", 19, 0],["Day Ten: Gifts", 20, 0],["Day Eleven: Discovery", 21, 0],["Day Eleven: Proposal", 22, 0],["Day Eleven: Warning", 23, 0],["Day Eleven: Mother and Son", 8, 0],
+			["Day Eleven: Father and Son", 9, 0],["Day Eleven: Fireworks", 10, 0],["Day Twelve: Celebration", 11, 0],["Day Twelve: Taken", 12, 0],["Day Thirteen: Exile", 13, 0],["Day Thirteen: Flight", 14, 0],["Day Thirteen: Volunteering", 15, 0],
+		["History and Myth", 0, 0xFFFE],
+			["Pulse", 25, 0],["Pulse Fal'Cie", 26, 0],["Pulse L'Cie", 27, 0],["Cie'th", 28, 0],["Brands", 29, 0],["Crystal Stasis", 30, 0],["Eidolons", 31, 0],["Ragnarok", 16, 0],
+			["The War of Transgression", 17, 0],["Lowerworld Artifacts", 18, 0],["Cie'th Stones", 19, 0],["The Undying", 20, 0],
+		["Locales", 1, 0xFFFE],
+			["Cocoon", 25, 0],["The Hanging Edge", 26, 0],["Pulse Vestiges", 27, 0],["Bodhum", 28, 0],["Lake Bresha", 29, 0],["The Vile Peaks", 30, 0],["The Gapra Whitewood", 31, 0],["The Sunleth Waterscape", 16, 0],
+			["Euride Gorge", 17, 0],["Palumpolum", 18, 0],["Nautilus", 19, 0],["Nautilus Park", 20, 0],["The Fifth Ark", 21, 0],["Eden", 22, 0],["Orphan's Cradle", 23, 0],["Gran Pulse", 8, 0],
+			["Vallis MedIa", 9, 0],["The Archylte Steppe", 10, 0],["The Yachas Massif", 11, 0],["The Mah'habara Subterra", 12, 0],["Sulyya Springs", 13, 0],["Taejin's Tower", 14, 0],["Oerba", 15, 0],["The Faultwarrens", 0, 0],
+			["The Seventh Ark", 1, 1],
+		["Cocoon Society", 2, 0xFFFE],
+			["The Sanctum", 25, 0],["The Purge", 26, 0],["Sanctum Fal'Cie", 27, 0],["Sanctum L'Cie", 28, 0],["PSICOM", 29, 0],["Guardian Corps", 30, 0],["Wide-area Response Brigade", 31, 0],["The <i>Lindblum</i>", 16, 0],
+			["The <i>Palamecia</i>", 17, 0],["Bodham Security Regiment", 18, 0],["Woodlands Observation Battalion", 19, 0],["Palumpolum Security Division", 20, 0],["Nautilus Security Regiment", 21, 0],["The Homeguard", 22, 0],["Bioweapons", 23, 0],["AMP Technology", 8, 0],
+			["The Pompa Sancta", 9, 0],["NORA", 10, 0],["Chocobos", 11, 0],
+		["The Fal'Cie", 3, 0xFFFE],
+			["Orphan", 25, 0],["Barthandelus", 26, 0],["Eden", 27, 0],["Phoenix", 28, 0],["Kujata", 29, 0],["Carbuncle", 30, 0],["Anima", 31, 0],["Atomos", 16, 0],
+			["Bismarck", 17, 0],["Dahaka", 18, 0],["Titan", 19, 0],
+			["Nemesis", 20, 1],
+		["Analects", 5, 0xFFFE],
+			["I. The Vanished Gods", 25, 0],["II. Lindzei's Nest", 26, 0],["III. The Chosen", 27, 0],["IV. The Heavenly Deceit", 28, 0],["V. The Age of Fading Glory", 29, 0],["VI. The Age of Ruin", 30, 0],["VII. Hallowed Pulse", 31, 0],["VIII. Fell Lindzei", 16, 0],
+			["IX: Her Providence", 17, 0],["X: The Menace Beyond", 18, 0],["XI. Hypothesis of the Hunt", 19, 0],["XII: The Door of Souls", 20, 0],["XIII: Fabula Nova Crystallis", 21, 0],
+		["Primers: Gameplay Basics", 10, 0xFFFE],
+			["Basic Controls", 24, 0],["Saving", 25, 0],["Shopping", 26, 0],["Upgrading Equipment", 27, 0],["The Mini-map", 28, 0],["Auto-talk", 29, 0],["Auto-jump", 30, 0],["Blue and Red Indicators", 31, 0],
+			["Yellow Indicators", 16, 0],["Object Interaction - Part 1", 17, 0],["Object Interaction - Part 2", 18, 0],["Skippable Cutscenes", 19, 0],
+		["Primers: Battle", 12, 0xFFFE],
+			["Battle Basics", 24, 0],["Battle Results", 25, 0],["Synthesized Abilities", 26, 0],["Chains and Staggering", 27, 0],["Paradigms", 28, 0],["Role: Commando", 29, 0],["Role: Ravager", 30, 0],["Role: Sentinel", 31, 0],
+			["Role: Medic", 16, 0],["Role: Synergist", 17, 0],["Role: Saboteur", 18, 0],["The Crystarium - Part 1", 19, 0],["The Crystarium - Part 2", 20, 0],["The Crystarium - Part 3", 21, 0],["Status Effects", 22, 0],["Elemental Damage and Resistance", 23, 0],
+			["Status Ailments", 8, 0],["Neutralizing Status Effects", 9, 0],["Libra and Other Techniques", 10, 0],["Eidolon Battles", 11, 0],["Summoning Eidolons", 12, 0],["Skipping Summoning Sequences", 13, 0],
+			["Role: Synergist (Hope)", 14, 1],["Role: Synergist (Sazh)", 15, 1],["Role: Sentinel (Snow)", 0, 1],
+			["Three-way Battles", 1, 0],
+			["Avoiding Encounters", 2, 1],
+		["Primers: Exploration", 13, 0xFFFE],
+			["Enemy Encounters", 24, 0],["Aggression and Preemptive Strikes", 25, 0],["Shrouds", 26, 0],["Cie'th Stones and Missions", 27, 0],["Chocobos", 28, 0],
+			["Pulse Armaments", 6, 1],["Wildlife Auto-containment Paddocks", 7, 1],["Climate Control Orbs", 56, 1],
+			["Cie'th Waystones", 57, 0],["Cie'th Palings", 58, 0],
+			["Flight of the Chocobo", 59, 1],["The Menhirrim", 60, 1],["Repairing Bhakti", 61, 1],["[Titan's Trials - Blank]", 62, 1],
+		["Primers: The Main Menu", 11, 0xFFFE],
+			["The Paradigm Deck", 24, 0],["Battle Team Formation", 25, 0],["Area Maps", 26, 0],["The Datalog", 27, 0],["Camera Settings", 28, 0],
+		["Enemy Intel: Soldiers", 0xF0, 0xFFFE],
+			["PSICOM Shock Troops", 0, 0xFFFF],
+				["PSICOM Enforcer", 160, 0],["PSICOM Tracker", 158, 0],["PSICOM Scavenger", 157, 0],["PSICOM Raider", 162, 0],
+				["Sanctum Seraph", 163, 0],["Targeting Beacon (PSICOM Tracker)", 317, 0],["Targeting Beacon (Sanctum Seraph)", 318, 0],
+			["PSICOM Hunters", 0, 0xFFFF],
+				["PSICOM Warden", 78, 0],["PSICOM Ranger", 76, 0],["PSICOM Predator", 75, 0],["PSICOM Infiltrator", 79, 0],["Sanctum Archangel", 80, 0],
+			["PSICOM Artillery", 0, 0xFFFF],
+				["PSICOM Bombardier", 234, 0],["PSICOM Destroyer", 235, 0],["Sanctum Celebrant", 236, 0],
+			["PSICOM Airborne", 0, 0xFFFF],
+				["PSICOM Aerial Recon", 133, 0],["PSICOM Aerial Sniper", 134, 0],["PSICOM Dragoon", 135, 0],
+			["PSICOM Epopts", 0, 0xFFFF],
+				["PSICOM Huntress", 136, 0],["Sanctum Inquisitrix", 137, 0],
+			["PSICOM Elites", 0, 0xFFFF],
+				["PSICOM Marauder", 164, 0],["PSICOM Executioner", 264, 0],["PSICOM Warlord", 165, 0],["PSICOM Reaver", 166, 0],["Sanctum Templar", 167, 0],
+			["Corps Footmen", 0, 0xFFFF],
+				["Corps Regular", 154, 0],["Corps Watchman", 54, 0],["Corps Pacifex", 152, 0],["Corps Steward", 156, 0],
+			["Corps Gunmen", 0, 0xFFFF],
+				["Corps Gunner", 153, 0],["Corps Marksman", 16, 0],["Corps Tranquifex", 151, 0],["Corps Defender", 155, 0],
+		["Enemy Intel: Militarized Units", 0xF1, 0xFFFE],
+			["Drones", 0, 0xFFFF],
+				["Watchdrone", 142, 0],["Deckdrone", 216, 0],["Tilters", 0, 0xFFFF],["Myrmidon", 139, 0],["Crusader", 263, 0],["Orion", 17, 0],["Viking", 141, 0],
+			["Golems", 0, 0xFFFF],
+				["Uhlan", 107, 0],["Bulwarker", 108, 0],
+			["Cognispeeders", 0, 0xFFFF],
+				["Ciconia Velocycle", 109, 0],["Falco Velocycle", 113, 0],["Milvus Velocycle", 111, 0],["Aquila Velocycle", 115, 0],
+			["Armatures", 0, 0xFFFF],
+				["Midlight Reaper", 128, 0],["Megrim Thresher", 130, 0],["Havoc Skytank", 22, 0],["Starboard Hull (Havoc Skytank)", 26, 0],
+				["Starboard Turret (Havoc Skytank)", 24, 0],["Portside Hull (Havoc Skytank)", 25, 0],["Portside Turret (Havoc Skytank)", 23, 0],
+			["Razorclaws", 0, 0xFFFF],
+				["Pantheron", 0, 0],["Thexteron", 138, 0],["Adamantheron", 3, 0],
+			["Zwerg Droids", 0, 0xFFFF],
+				["Zwerg Scandroid", 37, 0],["Zwerg Metrodroid", 225, 0],
+			["Vespids", 0, 0xFFFF],
+				["Vespid", 32, 0],["Vespid Soldier", 34, 0],
+			["Leeches", 0, 0xFFFF],
+				["Frag Leech", 98, 0],
+			["Armadons", 0, 0xFFFF],
+				["Lucidon", 66, 0],["Thermadon", 68, 0],
+			["Flan", 0, 0xFFFF],
+				["Flanitor", 74, 0],["Flanborg", 11, 0],
+			["Behemoths", 0, 0xFFFF],
+				["Beta Behemoth", 15, 0],["Alpha Behemoth", 39, 0],["Lodestar Behemoth", 250, 0],["Proto-behemoth", 72, 0],
+			["Annihilators", 0, 0xFFFF],
+				["Manasvin Warmech (1<sup>st</sup> Encounter)", 123, 0],["Manasvin Warmech (1<sup>st</sup> Encounter: Phase 2)", 124, 1],["Manasvin Warmech (2<sup>nd</sup> Encounter)", 125, 0],
+				["Anavatapta Warmech", 126, 0],["Garuda Interceptor", 40, 0],["Garuda Interceptor (Phase 2)", 42, 1],
+				["Kalavinka Striker", 43, 0],["Aster Protoflorian", 85, 0],["Vernal Harvester", 90, 0],
+				["Ushumgal Subjugator (1<sup>st</sup> Encounter)", 20, 0],["Ushumgal Subjugator (2<sup>nd</sup> Encounter)", 19, 0],["Ushumgal Subjugator (2<sup>nd</sup> Encounter: Phase 2)", 18, 1],
+				["Tiamat Eliminator", 132, 0],["The <i>Proudclad</i> (1<sup>st</sup> Encounter)", 144, 0],["The <i>Proudclad</i> (2<sup>nd</sup> Encounter)", 143, 0],
+		["Enemy Intel: Feral Creatures", 0xF2, 0xFFFE],
+			["Beasts", 0, 0xFFFF],
+				["Silver Lobo", 1, 0],["Gorgonopsid", 2, 0],["Uridimmu", 277, 0],["Amam", 281, 0],["Mánagarmr", 4, 0],["Ugallu", 299, 0],["Megistotherian", 226, 0],
+			["Terraquatics", 0, 0xFFFF],
+				["Bloodfang Bass", 117, 0],["Breshan Bass", 118, 0],["Hedge Frog", 119, 0],["Mud Frog", 120, 0],["Ceratosaur", 121, 0],["Ceratoraptor", 122, 0],
+			["Spooks", 0, 0xFFFF],
+				["Gremlin", 35, 0],["Garchimacera", 170, 0],["Imp", 36, 0],["Ahriman", 217, 0],["Leyak", 38, 0],["Rangda", 171, 0],["Adroa", 278, 0],["Verdelet", 289, 0],
+			["Daemons", 0, 0xFFFF],
+				["Incubus", 29, 0],["Succubus", 181, 0],["Skata'ne", 28, 0],["Stikini", 180, 0],["Yaksha", 30, 0],["Yakshini", 182, 0],["Rakshaha", 282, 0],
+			["Stalkers", 0, 0xFFFF],
+				["Barbed Spectre", 33, 0],["Triffid", 31, 0],["Mushussu", 293, 0],
+			["Armadillons", 0, 0xFFFF],
+				["Scalebeast", 64, 0],["Gurangatch", 284, 0],["Navidon", 62, 0],
+			["Nudibranchs", 0, 0xFFFF],
+				["Crawler", 95, 0],["Noctilucale", 96, 0],["Alraune", 97, 0],["Rafflesia", 292, 0],
+			["Wyverns", 0, 0xFFFF],
+				["Wyvern", 45, 0],["Svarog", 227, 0],["Amphisbaena", 172, 0],["Zirnitra", 288, 0],
+			["Woodwraiths", 0, 0xFFFF],
+				["Enki", 244, 0],["Enlil", 242, 0],["Bandersnatch", 246, 0],["Jabberwocky", 247, 0],
+			["Oretoises", 0, 0xFFFF],
+				["Adamantoise", 183, 0],["Left Foreleg (Adamantoise)", 187, 0],["Right Foreleg (Adamantoise)", 188, 0],
+				["Adamantortoise", 185, 0],["Left Foreleg (Adamantortoise)", 189, 0],["Right Foreleg (Adamantortoise)", 190, 0],
+				["Adamanchelid", 191, 0],
+				["Wurtzitoise", 192, 1],["Left Foreleg (Wurtzitoise)", 194, 1],["Right Foreleg (Wurtzitoise)", 195, 1],
+				["Long Gui", 304, 0],["Left Foreleg (Long Gui)", 306, 0],["Right Foreleg (Long Gui)", 307, 0],
+				["Shaolong Gui", 303, 0],
+			["Flan", 0, 0xFFFF],
+				["Flan", 81, 0],["Dire Flan", 83, 0],["Monstrous Flan", 82, 0],
+				["Rust Pudding", 5, 0],["Ferruginous Pudding", 7, 0],["Corrosive Custard", 6, 0],
+				["Flandragora", 8, 0],["Rotten Tomato", 10, 1],["Hybrid Flora", 9, 0],
+				["Phosphoric Ooze", 168, 0],["Alchemic Ooze", 169, 0],
+				["Gelatitan", 302, 0],["Ectopudding", 301, 0],
+			["Behemoths", 0, 0xFFFF],
+				["Feral Behemoth", 14, 0],["Greater Behemoth", 70, 0],["Kaiser Behemoth", 286, 0],["Behemoth King", 173, 0],["Humbaba", 296, 0],
+			["Goblins", 0, 0xFFFF],
+				["Goblin", 84, 0],["Goblin Chieftain", 48, 0],["Munchkin", 46, 0],["Munchkin Maestro", 49, 0],["Borgbear", 47, 0],["Borgbear Hero", 50, 0],
+			["Sahagin", 0, 0xFFFF],
+				["Sahagin", 51, 0],["Dagonite", 53, 0],["Orobon", 52, 0],
+			["Ochu", 0, 0xFFFF],
+				["Ochu", 196, 0],["Microchu", 197, 0],["Neochu", 283, 0],["Picochu", 308, 0],
+			["Cactuar", 0, 0xFFFF],
+				["Cactuar", 253, 0],["Giant Cactuar", 255, 0],["Cactuar Prime", 254, 0],["Flowering Cactuar", 261, 0],["Gigantuar", 262, 0],
+			["Tonberries", 0, 0xFFFF],
+				["Tonberry", 256, 0],
+		["Enemy Intel: Pulse Automata", 0xF3, 0xFFFE],
+			["Pulsework Soldiers", 0, 0xFFFF],
+				["Pulsework Soldier", 55, 0],["Pulsework Knight", 57, 0],["Pulsework Gladiator", 59, 0],["Pulsework Centurion", 218, 0],["Pulsework Champion", 279, 0],
+			["Combat Engineers", 0, 0xFFFF],
+				["Boxed Phalanx", 178, 0],["Hoplite", 179, 0],["Ambling Bellows", 298, 0],["Cryptos", 309, 0],
+			["Centaurions", 0, 0xFFFF],
+				["Berserker", 175, 0],["Centurion Blade (Berserker)", 319, 0],["Tyrant", 176, 0],["Centurion Blade (Tyrant)", 320, 0],
+				["Immortal", 177, 0],["Centurion Blade (Immortal)", 321, 0],
+			["Bombs", 0, 0xFFFF],
+				["Bomb", 61, 0],["Circuitron", 228, 0],["Cryohedron", 229, 0],
+			["Armaments", 0, 0xFFFF],
+				["Dreadnought", 12, 0],["Dreadnought (Phase 2)", 13, 1],["Juggernaut", 230, 0],
+		["Enemy Intel: Cie'th", 0xF4, 0xFFFE],
+			["Shambling Cie'th", 0, 0xFFFF],
+				["Ghoul", 201, 0],["Ghast", 99, 0],["Strigoi", 101, 0],["Taxim", 100, 0],["Vampire", 102, 0],["Sacrifice", 252, 0],
+			["Winged Cie'th", 0, 0xFFFF],
+				["Wight", 103, 0],["Pijavica", 105, 0],["Nelapsi", 104, 0],["Varcolaci", 106, 0],["Edimmu", 290, 0],["Chonchon", 199, 0],["Penanggalan", 300, 0],
+			["Unusual Cie'th", 0, 0xFFFF],
+				["Vetala", 205, 0],["Raktavija", 294, 0],["Seeker", 200, 0],
+			["The Undying", 0, 0xFFFF],
+				["Mithridates", 291, 0],["Bituitus", 198, 0],["Geiseric", 202, 0],["Geiseric's Fist (Geiseric)", 203, 1],["Syphax", 231, 0],
+				["Numidia", 248, 0],["Attacus", 204, 0],["Wladislaus", 249, 0],["Vercingetorix", 207, 0],
+		["Enemy Intel: Others", 0xF5, 0xFFFE],
+			["Fal'Cie", 0, 0xFFFF],
+				["Anima", 215, 0],["Right Manipulator (Anima)", 232, 0],["Left Manipulator (Anima)", 233, 0],["Dahaka", 220, 0],["Barthandelus (1<sup>st</sup> Encounter)", 265, 0],
+				["Right Pauldron (Barthandelus 1<sup>st</sup> Encounter)", 267, 0],["Right Ailette (Barthandelus 1<sup>st</sup> Encounter)", 268, 0],["Left Pauldron (Barthandelus 1<sup>st</sup> Encounter)", 270, 0],["Left Ailette (Barthandelus 1<sup>st</sup> Encounter)", 269, 0],
+				["Barthandelus (2<sup>nd</sup> Encounter)", 271, 0],["Barthandelus (3<sup>rd</sup> Encounter)", 273, 0],
+				["Orphan (1<sup>st</sup> Encounter)", 274, 0],["Orphan (2<sup>nd</sup> Encounter)", 275, 0],["Orphan (2<sup>nd</sup> Encounter: Staggered)", 276, 1],
+			["L'Cie", 0, 0xFFFF],
+				["Cid Raines", 237, 0],
+			["Eidolons", 0, 0xFFFF],
+				["Odin", 310, 0],["Stiria", 311, 0],["Nix", 312, 0],["Brynhildr", 313, 0],["Alexander", 314, 0],["Hecatoncheir", 315, 0],["Bahamut", 316, 0],
+	]
+
+	prepareStringIndexedArray(items, [
+		["Combat Items", "it_combat", 1],
+		["Potion", "it_potion"],["Phoenix Down", "it_phenxtal"],["Elixir", "it_elixir"],
+		["Librascope", "it_libra"],
+		["Antidote", "it_antidote"],["Holy Water", "it_holywater"],["Painkiller", "it_sedative"],["Mallet", "it_tonkati"],
+		["Foul Liquid", "it_stinkwater"],["Wax", "it_wax"],
+		["Shrouds", "it_shrouds", 1],
+		["Fortisol", "it_powersmoke"],["Aegisol", "it_barsmoke"],["Deceptisol", "it_sneaksmoke"],["Ethersol", "it_tpsmoke"]
+	]);
+
+	prepareStringIndexedArray(components, [
+		["Organic Components (+EXP Multiplier / Low Exp)", "material_org", 1],
+		["Begrimed Claw", "material_m000"],["Bestial Claw", "material_m001"],["Gargantuan Claw", "material_m002"],["Hellish Talon", "material_m003"],
+		["Shattered Bone", "material_m004"],["Sturdy Bone", "material_m005"],["Otherworldly Bone", "material_m006"],["Ancient Bone", "material_m007"],
+		["Moistened Scale", "material_m009"],["Seapetal Scale", "material_m010"],["Abyssal Scale", "material_m011"],["Seaking's Beard", "material_m012"],
+		["Segmented Carapace", "material_m013"],["Iron Shell", "material_m014"],["Armored Shell", "material_m015"],["Regenerating Carapace", "material_m016"],
+		["Chipped Fang", "material_m017"],["Wicked Fang", "material_m018"],["Monstrous Fang", "material_m019"],["Sinister Fang", "material_m020"],
+		["Severed Wing", "material_m021"],["Scaled Wing", "material_m022"],["Abominable Wing", "material_m023"],["Menacing Wings", "material_m024"],
+		["Molted Tail", "material_m025"],["Barbed Tail", "material_m026"],["Diabolic Tail", "material_m027"],["Entrancing Tail", "material_m028"],
+		["Torn Leather", "material_m029"],["Thickened Hide", "material_m030"],["Smooth Hide", "material_m031"],["Supple Leather", "material_m032"],
+		["Gummy Oil", "material_m033"],["Fragrant Oil", "material_m034"],["Medicinal Oil", "material_m035"],["Esoteric Oil", "material_m036"],
+		["Scraggly Wool", "material_m037"],["Rough Wool", "material_m038"],["Thick Wool", "material_m039"],["Fluffy Wool", "material_m040"],
+		["Murky Ooze", "material_m045"],["Vibrant Ooze", "material_m046"],["Transparent Ooze", "material_m047"],["Wonder Gel", "material_m048"],
+		["Fractured Horn", "material_m049"],["Spined Horn", "material_m050"],["Fiendish Horn", "material_m051"],["Infernal Horn", "material_m052"],
+		["Strange Fluid", "material_m053"],["Enigmatic Fluid", "material_m054"],["Mysterious Fluid", "material_m055"],["Ineffable Fluid", "material_m056"],
+		["Cie'th Tear", "material_m057"],["Tear of Frustration", "material_m058"],["Tear of Remorse", "material_m059"],["Tear of Woe", "material_m060"],
+		["Red Mycelium", "material_m068"],["Blue Mycelium", "material_m069"],["White Mycelium", "material_m070"],["Black Mycelium", "material_m071"],
+		["Dawnlight Dew", "material_m064"],["Dusklight Dew", "material_m065"],["Gloomstalk", "material_m066"],["Sunpetal", "material_m067"],
+		["Chocobo Plume", "material_m061"],["Chocobo Tail Feather", "material_m062"],["Green Needle", "material_m063"],
+		["Mechanical Components (-EXP Multipler / High Exp)", "material_mech", 1],
+		["Insulated Cabling", "material_j000"],["Fiber-optic Cable", "material_j001"],["Liquid Crystal Lens", "material_j002"],["Ring Joint", "material_j003"],
+		["Epicyclic Gear", "material_j004"],["Crankshaft", "material_j005"],["Electrolytic Capacitor", "material_j006"],["Flywheel", "material_j007"],
+		["Sprocket", "material_j008"],["Actuator", "material_j009"],["Spark Plug", "material_j010"],["Iridium Plug", "material_j011"],
+		["Needle Valve", "material_j012"],["Butterfly Valve", "material_j013"],
+		["Bomb Ashes", "material_m041"],["Bomb Fragment", "material_m042"],["Bomb Shell", "material_m043"],["Bomb Core", "material_m044"],
+		["Analog Circuit", "material_j014"],["Digital Circuit", "material_j015"],
+		["Gyroscope", "material_j016"],["Electrode", "material_j017"],["Ceramic Armor", "material_j018"],["Chobham Armor", "material_j019"],
+		["Radial Bearing", "material_j020"],["Thrust Bearing", "material_j021"],["Solenoid", "material_j022"],["Mobius Coil", "material_j023"],
+		["Tungsten Tube", "material_j024"],["Titanium Tube", "material_j025"],["Passive Detector", "material_j026"],["Active Detector", "material_j027"],
+		["Transformer", "material_j028"],["Amplifer", "material_j029"],["Carburetor", "material_j030"],["Supercharger", "material_j031"],
+		["Piezoelectric Element", "material_j032"],["Crystal Oscillator", "material_j033"],["Paraffin Oil", "material_j034"],["Silicone Oil", "material_j035"],
+		["Synthetic Muscle", "material_j036"],["Turboprop", "material_j037"],["Turbojet", "material_j038"],["Tesla Turbine", "material_j039"],
+		["Polymer Emulsion", "material_j040"],["Ferroelectric Film", "material_j041"],["Superconductor", "material_j042"],["Perfect Conductor", "material_j043"],
+		["Particle Accelerator", "material_j044"],["Ultracompact Reactor", "material_j045"],
+		["Premium Components (High Sell Price)", "material_pre", 1],
+		["Moonblossom Seed", "material_m074"],["Starblossom Seed", "material_m075"],
+		["Succulent Fruit", "material_m072"],["Malodorous Fruit", "material_m073"],
+		["Perfume", "material_m076"],
+		["Credit Chip", "material_j046"],["Incentive Chip", "material_j047"],
+		["Cactar Doll", "material_j048"],["Moogle Puppet", "material_j049"],["Tonberry Figurine", "material_j050"],["Plush Chocobo", "material_j051"],
+		["Gold Dust", "material_o010"],["Gold Nugget", "material_o011"],["Platinum Ingot", "material_o012"],
+		["Catalysts (Upgrade)", "material_cat", 1],
+		["Millerite", "material_o000"],["Rhodochrosite", "material_o001"],["Cobaltite", "material_o002"],["Perovskite", "material_o003"],
+		["Uraninite", "material_o004"],["Mnar Stone", "material_o005"],["Scarletite", "material_o006"],["Adamantite", "material_o007"],
+		["Dark Matter", "material_o008"],["Trapezohedron", "material_o009"]
+	]);
+
+	prepareStringIndexedArray(keyItems, [
+		["Story Items", "key_story", 1],
+		["Grav-Con Unit", "key_ggear"],["Datalog", "key_receiver"],["Survival Knife", "key_knife"],["Serah's Tear", "key_tears"],["Com Unit", "key_commun"],["Omni-kit", "key_ctool"],
+		["Eidoliths", "key_eidolith", 1],
+		["Odin Eidolith", "key_c_odin"],["Shiva Eidolith", "key_c_shiva"],["Brynhildr Eidolith", "key_c_bryn"],["Alexander Eidolith", "key_c_alexa"],["Hecatoncheir Eidolith", "key_c_hecat"],["Bahamut Eidolith", "key_c_baha"],
+		["Shops", "key_shop", 1],
+		["Unicorn Mart", "key_shop_00"],["Eden Pharmaceuticals", "key_shop_01"],["Up in Arms", "key_shop_02"],["Plautus's Workshop", "key_shop_03"],["Gilgamesh, Inc.", "key_shop_05"],
+		["B&W Outfitters", "key_shop_06"],["Magical Moments", "key_shop_07"],["Moogleworks", "key_shop_08"],["Sanctum Labs", "key_shop_09"],
+		["Creature Comforts", "key_shop_10"],["The Motherlode", "key_shop_11"],["Lenora's Garage", "key_shop_12"],["R&D Depot", "key_shop_13"],
+		["Pulse Items", "key_pulse", 1],
+		["Gysahl Reins", "key_field_00"],["Power Cable", "key_field_01"],["Trochoid Gear", "key_field_02"],
+		["Metal Plate", "key_field_03"],["Battery Pack", "key_field_04"],["Aspheric Lens", "key_field_05"]
+	]);
+
+	prepareStringIndexedArray(weapons, [
+		["Lightning - Blazefire Saber", "wea_lig", 1],["Blazefire Saber", "wea_lig_001"],["Flamberge", "wea_lig_002"],["Omega Weapon", "wea_lig_017"],
+		["Lightning - Axis Blade", "wea_lig", 1],["Axis Blade", "wea_lig_003"],["Enkindler", "wea_lig_004"],["Omega Weapon", "wea_lig_018"],
+		["Lightning - Edged Carbine", "wea_lig", 1],["Edged Carbine", "wea_lig_005"],["Razor Carbine", "wea_lig_006"],["Omega Weapon", "wea_lig_019"],
+		["Lightning - Lifesaber", "wea_lig", 1],["Lifesaber", "wea_lig_007"],["Peacemaker", "wea_lig_008"],["Omega Weapon", "wea_lig_020"],
+		["Lightning - Gladius", "wea_lig", 1],["Gladius", "wea_lig_009"],["Helter-skelter", "wea_lig_010"],["Omega Weapon", "wea_lig_021"],
+		["Lightning - Organyx", "wea_lig", 1],["Organyx", "wea_lig_011"],["Apocalypse", "wea_lig_012"],["Omega Weapon", "wea_lig_022"],
+		["Lightning - Hauteclaire", "wea_lig", 1],["Hauteclaire", "wea_lig_013"],["Durandal", "wea_lig_014"],["Omega Weapon", "wea_lig_023"],
+		["Lightning - Lionheart", "wea_lig", 1],["Lionheart", "wea_lig_015"],["Ultima Weapon", "wea_lig_016"],["Omega Weapon", "wea_lig_024"],
+		["Lightning - Dummy", "wea_lig", 1],["Godslayer", "wea_lig_000"],
+		["Sazh - Vega42s", "wea_saz", 1],["Vega 42s", "wea_saz_001"],["Altairs", "wea_saz_002"],["Total Eclipses", "wea_saz_017"],
+		["Sazh - Spica Defenders", "wea_saz", 1],["Spica Defenders", "wea_saz_003"],["Sirius Sidearms", "wea_saz_004"],["Total Eclipses", "wea_saz_018"],
+		["Sazh - Deneb Duellers", "wea_saz", 1],["Deneb Duellers", "wea_saz_005"],["Canopus AMPs", "wea_saz_006"],["Total Eclipses", "wea_saz_019"],
+		["Sazh - Rigels", "wea_saz", 1],["Rigels", "wea_saz_007"],["Polaris Specials", "wea_saz_008"],["Total Eclipses", "wea_saz_020"],
+		["Sazh - Aldebarans", "wea_saz", 1],["Aldebarans", "wea_saz_009"],["Sadalmeliks", "wea_saz_010"],["Total Eclipses", "wea_saz_021"],
+		["Sazh - Pleiades Hi-Powers", "wea_saz", 1],["Pleiades Hi-Powers", "wea_saz_011"],["Hyades Magnums", "wea_saz_012"],["Total Eclipses", "wea_saz_022"],
+		["Sazh - Antares Deluxes", "wea_saz", 1],["Antares Deluxes", "wea_saz_013"],["Fomalhaut Elites", "wea_saz_014"],["Total Eclipses", "wea_saz_023"],
+		["Sazh - Procyons", "wea_saz", 1],["Procyons", "wea_saz_015"],["Betelgeuse Customs", "wea_saz_016"],["Total Eclipses", "wea_saz_024"],
+		["Sazh - Dummy", "wea_saz", 1],["Death Penalties", "wea_saz_000"],
+		["Snow - Wild Bear", "wea_sno", 1],["Wild Bear", "wea_sno_001"],["Feral Pride", "wea_sno_002"],["Save the Queen", "wea_sno_017"],
+		["Snow - Paladin", "wea_sno", 1],["Paladin", "wea_sno_003"],["Winged Saint", "wea_sno_004"],["Save the Queen", "wea_sno_018"],
+		["Snow - Rebel Heart", "wea_sno", 1],["Rebel Heart", "wea_sno_005"],["Warrior's Emblem", "wea_sno_006"],["Save the Queen", "wea_sno_019"],
+		["Snow - Power Circle", "wea_sno", 1],["Power Circle", "wea_sno_007"],["Battle Standard", "wea_sno_008"],["Save the Queen", "wea_sno_020"],
+		["Snow - Feymark", "wea_sno", 1],["Feymark", "wea_sno_009"],["Soul Blazer", "wea_sno_010"],["Save the Queen", "wea_sno_021"],
+		["Snow - Sacrificial Circle", "wea_sno", 1],["Sacrificial Circle", "wea_sno_011"],["Indomitus", "wea_sno_012"],["Save the Queen", "wea_sno_022"],
+		["Snow - Unsetting Sun", "wea_sno", 1],["Unsetting Sun", "wea_sno_013"],["Midnight Sun", "wea_sno_014"],["Save the Queen", "wea_sno_023"],
+		["Snow - Umbra", "wea_sno", 1],["Umbra", "wea_sno_015"],["Solaris", "wea_sno_016"],["Save the Queen", "wea_sno_024"],
+		["Snow - Dummy", "wea_sno", 1],["Omnipotence", "wea_sno_000"],
+		["Hope - Airwing", "wea_hop", 1],["Airwing", "wea_hop_001"],["Skycutter", "wea_hop_002"],["Nue", "wea_hop_017"],
+		["Hope - Hawkeye", "wea_hop", 1],["Hawkeye", "wea_hop_003"],["Eagletalon", "wea_hop_004"],["Nue", "wea_hop_018"],
+		["Hope - Otshirvani", "wea_hop", 1],["Otshirvani", "wea_hop_005"],["Urubutsin", "wea_hop_006"],["Nue", "wea_hop_019"],
+		["Hope - Ninurta", "wea_hop", 1],["Ninurta", "wea_hop_007"],["Jatayu", "wea_hop_008"],["Nue", "wea_hop_020"],
+		["Hope - Vidofnir", "wea_hop", 1],["Vidofnir", "wea_hop_009"],["Hresvelgr", "wea_hop_010"],["Nue", "wea_hop_021"],
+		["Hope - Simurgh", "wea_hop", 1],["Simurgh", "wea_hop_011"],["Tezcatlipoca", "wea_hop_012"],["Nue", "wea_hop_022"],
+		["Hope - Malphas", "wea_hop", 1],["Malphas", "wea_hop_013"],["Naberius", "wea_hop_014"],["Nue", "wea_hop_023"],
+		["Hope - Alicanto", "wea_hop", 1],["Alicanto", "wea_hop_015"],["Caladrius", "wea_hop_016"],["Nue", "wea_hop_024"],
+		["Hope - Dummy", "wea_hop", 1],["Rising Sun", "wea_hop_000"],
+		["Vanille - Binding Rod", "wea_van", 1],["Binding Rod", "wea_van_001"],["Hunter's Rod", "wea_van_002"],["Nirvana", "wea_van_017"],
+		["Vanille - Tigerclaw", "wea_van", 1],["Tigerclaw", "wea_van_003"],["Wyrmfang", "wea_van_004"],["Nirvana", "wea_van_018"],
+		["Vanille - Healer's Staff", "wea_van", 1],["Healer's Staff", "wea_van_005"],["Physician's Staff", "wea_van_006"],["Nirvana", "wea_van_019"],
+		["Vanille - Pearlwing Staff", "wea_van", 1],["Pearlwing Staff", "wea_van_007"],["Brightwing Staff", "wea_van_008"],["Nirvana", "wea_van_020"],
+		["Vanille - Rod of Thorns", "wea_van", 1],["Rod of Thorns", "wea_van_009"],["Orochi Rod", "wea_van_010"],["Nirvana", "wea_van_021"],
+		["Vanille - Mistilteinn", "wea_van", 1],["Mistilteinn", "wea_van_011"],["Erinye's Cane", "wea_van_012"],["Nirvana", "wea_van_022"],
+		["Vanille - Belladonna Wand", "wea_van", 1],["Belladonna Wand", "wea_van_013"],["Malboro Wand", "wea_van_014"],["Nirvana", "wea_van_023"],
+		["Vanille - Heavenly Axis", "wea_van", 1],["Heavenly Axis", "wea_van_015"],["Abraxas", "wea_van_016"],["Nirvana", "wea_van_024"],
+		["Vanille - Dummy", "wea_van", 1],["Faerie Tail", "wea_van_000"],
+		["Fang - Bladed Lance", "wea_fan", 1],["Bladed Lance", "wea_fan_001"],["Glaive", "wea_fan_002"],["Kain's Lance", "wea_fan_017"],
+		["Fang - Dragoon Lance", "wea_fan", 1],["Dragoon Lance", "wea_fan_003"],["Dragonhorn", "wea_fan_004"],["Kain's Lance", "wea_fan_018"],
+		["Fang - Partisan", "wea_fan", 1],["Partisan", "wea_fan_005"],["Rhomphaia", "wea_fan_006"],["Kain's Lance", "wea_fan_019"],
+		["Fang - Shamanic Spear", "wea_fan", 1],["Shamanic Spear", "wea_fan_007"],["Heretic's Halberd", "wea_fan_008"],["Kain's Lance", "wea_fan_020"],
+		["Fang - Punisher", "wea_fan", 1],["Punisher", "wea_fan_009"],["Banescissor Spear", "wea_fan_010"],["Kain's Lance", "wea_fan_021"],
+		["Fang - Pandoran Spear", "wea_fan", 1],["Pandoran Spear", "wea_fan_011"],["Calamity Spear", "wea_fan_012"],["Kain's Lance", "wea_fan_022"],
+		["Fang - Taming Pole", "wea_fan", 1],["Taming Pole", "wea_fan_013"],["Venus Gospel", "wea_fan_014"],["Kain's Lance", "wea_fan_023"],
+		["Fang - Gae Bolg", "wea_fan", 1],["Gae Bolg", "wea_fan_015"],["Gungnir", "wea_fan_016"],["Kain's Lance", "wea_fan_024"],
+		["Fang - Dummy", "wea_fan", 1],["Longinus", "wea_fan_000"]
+	]);
+
+	weapons.notes = [
+		["[none]", 26, 0, 0, "Physical Defense"],["[none]", 61, 0, 0, "Physical Defense"],["[none]", 100, 0, 0, null, "Flamberge"],
+		["Attack: ATB Charge", 21, 0, 0, "Boost"],["Attack: ATB Charge II", 41, 0, 0, "Boost"],["Attack: ATB Charge II", 100, 0, 0, null, "Enkindler"],
+		["[none]", 26, 0, 0, "Magic Defense"],["[none]", 61, 0, 0, "Magic Defense"],["[none]", 100, 0, 0, null, "Razor Carbine"],
+		["Improved Raise", 21, 0, 0, "Low HP"],["Improved Raise II", 41, 0, 0, "Low HP"],["Improved Raise II", 100, 0, 0, null, "Peacemaker"],
+		["[none]", 26, 0, 0, "Physical Defense"],["[none]", 61, 0, 0, "Physical Defense"],["[none]", 100, 0, 0, null, "Helter-skelter"],
+		["Leadenstrike", 26, 0, 0, "Adamancy"],["Ironstrike", 61, 0, 0, "Adamancy"],["Ironstrike", 100, 0, 0, null, "Apocalypse"],
+		["Stagger Lock", 26, 0, 0, "Gestalt"],["Stagger Lock", 61, 0, 0, "Gestalt"],["Stagger Lock", 100, 0, 0, null, "Durandal"],
+		["Quick Sagger", 21, 0, 0, "Gestalt"],["Quick Sagger", 41, 0, 0, "Gestalt"],["Quick Sagger", 100, 0, 0, null, "Ultima Weapon"],
+		["Uncapped HP/Damage", 100, 0, 0, null, "Not available in normal gameplay"],
+		["[none]", 26, 0, 0, "Magic Defense"],["[none]", 61, 0, 0, "Magic Defense"],["[none]", 100, 0, 0, null, "Altairs"],
+		["Augment Maintenance", 21, 0, 0, "Positive Effect"],["Augment Maintenance II", 41, 0, 0, "Positive Effect"],["Augment Maintenance II", 100, 0, 0, null, "Sirius Sidearms"],
+		["[none]", 26, 0, 0, "Magic Defense"],["[none]", 61, 0, 0, "Magic Defense"],["[none]", 100, 0, 0, null, "Canopus AMPs"],
+		["Stagger Lock", 26, 0, 0, "Gestalt"],["Stagger Lock", 61, 0, 0, "Gestalt"],["Stagger Lock", 100, 0, 0, null, "Polaris Specials"],
+		["Leadenstrike", 26, 0, 0, "Adamancy"],["Ironstrike", 61, 0, 0, "Adamancy"],["Ironstrike", 100, 0, 0, null, "Sadalmeliks"],
+		["Paper Tiger (HP: ??%)", 26, -60, -60, "Damage Reduction"],["Silk Tiger (HP: ??%)", 61, -40, -40, "Damage Reduction"],["Silk Tiger (HP: ??%)", 100, -40, -40, null, "Hyades Magnums"],
+		["Chain Bonus Boost", 21, 0, 0, "Boost"],["Chain Bonus Boost II", 41, 0, 0, "Boost"],["Chain Bonus Boost II", 100, 0, 0, null, "Fomalhaut Elites"],
+		["Stagger Maintenance", 21, 0, 0, "Gestalt"],["Stagger Maintenance II", 41, 0, 0, "Gestalt"],["Stagger Maintenance II", 100, 0, 0, null, "Betelgeuse Customs"],
+		["Uncapped HP/Damage", 100, 0, 0, null, "Not available in normal gameplay"],
+		["[none]", 26, 0, 0, "Physical Defense"],["[none]", 61, 0, 0, "Physical Defense"],["[none]", 100, 0, 0, null, "Feral Pride"],
+		["Improved Guard", 21, 0, 0, "High HP"],["Improved Guard II", 41, 0, 0, "High HP"],["Improved Guard II", 100, 0, 0, null, "Winged Saint"],
+		["Critical: Power Surge", 21, 0, 0, "Low HP"],["Critical: Power Surge II", 41, 0, 0, "Low HP"],["Critical: Power Surge II", 100, 0, 0, null, "Warrior's Emblem"],
+		["[none]", 26, 0, 0, "Physical Defense"],["[none]", 61, 0, 0, "Physical Defense"],["[none]", 100, 0, 0, null, "Battle Standard"],
+		["Enfeeblement", 21, 0, 0, "Ultimate Magic"],["Hinderance", 41, 0, 0, "Ultimate Magic"],["Hinderance", 100, 0, 0, null, "Soul Blazer"],
+		["Paper Tiger (HP: ??%)", 26, -60, -60, "Damage Reduction"],["Silk Tiger (HP: ??%)", 61, -40, -40, "Damage Reduction"],["Silk Tiger (HP: ??%)", 100, -40, -40, null, "Indomitus"],
+		["Stagger Lock", 26, 0, 0, "Gestalt"],["Stagger Lock", 61, 0, 0, "Gestalt"],["Stagger Lock", 100, 0, 0, null, "Midnight Sun"],
+		["Improved Ward", 21, 0, 0, "Magic Defense"],["Improved Ward II", 41, 0, 0, "Magic Defense"],["Improved Ward II", 100, 0, 0, null, "Solaris"],
+		["Uncapped HP/Damage", 100, 0, 0, null, "Not available in normal gameplay"],
+		["Critical: Shield", 21, 0, 0, "Low HP"],["Critical: Shield II", 41, 0, 0, "Low HP"],["Critical: Shield II", 100, 0, 0, null, "Skycutter"],
+		["[none]", 26, 0, 0, "Magic Defense"],["[none]", 61, 0, 0, "Magic Defense"],["[none]", 100, 0, 0, null, "Eagletalon"],
+		["Siphon Boost", 21, 0, 0, "Boost"],["Siphon Boost II", 41, 0, 0, "Boost"],["Siphon Boost II", 100, 0, 0, null, "Urubutsin"],
+		["[none]", 26, 0, 0, "Physical Defense"],["[none]", 61, 0, 0, "Physical Defense"],["[none]", 100, 0, 0, null, "Jatayu"],
+		["Defense Maintenance", 21, 0, 0, "Positive Effect"],["Defense Maintenance II", 41, 0, 0, "Positive Effect"],["Defense Maintenance II", 100, 0, 0, null, "Hresvelgr"],
+		["Stifled Magic", 21, 0, 0, "Ultimate Physic"],["Fettered Magic", 41, 0, 0, "Ultimate Physic"],["Fettered Magic", 100, 0, 0, null, "Tezcatlipoca"],
+		["Paper Tiger (HP: ??%)", 26, -60, -60, "Damage Reduction"],["Silk Tiger (HP: ??%)", 61, -40, -40, "Damage Reduction"],["Silk Tiger (HP: ??%)", 100, -40, -40, null, "Naberius"],
+		["Stagger Lock", 26, 0, 0, "Gestalt"],["Stagger Lock", 61, 0, 0, "Gestalt"],["Stagger Lock", 100, 0, 0, null, "Caladrius"],
+		["Uncapped HP/Damage", 100, 0, 0, null, "Not available in normal gameplay"],
+		["[none]", 26, 0, 0, "Physical Defense"],["[none]", 61, 0, 0, "Physical Defense"],["[none]", 100, 0, 0, null, "Hunter's Rod"],
+		["Leadenstrike", 26, 0, 0, "Adamancy"],["Ironstrike", 61, 0, 0, "Adamancy"],["Ironstrike", 100, 0, 0, null, "Wyrmfang"],
+		["Improved Cure", 21, 0, 0, "High HP"],["Improved Cure II", 41, 0, 0, "High HP"],["Improved Cure II", 100, 0, 0, null, "Physician's Staff"],
+		["[none]", 26, 0, 0, "Magic Defense"],["[none]", 61, 0, 0, "Magic Defense"],["[none]", 100, 0, 0, null, "Brightwing Staff"],
+		["[none]", 26, 0, 0, "Magic Defense"],["[none]", 61, 0, 0, "Magic Defense"],["[none]", 100, 0, 0, null, "Orochi Rod"],
+		["Ally KO: Power Surge", 21, 0, 0, "Low HP"],["Ally KO: Power Surge II", 41, 0, 0, "Low HP"],["Ally KO: Power Surge II", 100, 0, 0, null, "Erinye's Cane"],
+		["Improved Debuffing", 21, 0, 0, "Positive Effect"],["Improved Debuffing II", 41, 0, 0, "Positive Effect"],["Improved Debuffing II", 100, 0, 0, null, "Malboro Wand"],
+		["Stagger Lock", 21, 0, 0, "Gestalt"],["Stagger Lock", 41, 0, 0, "Gestalt"],["Stagger Lock", 100, 0, 0, null, "Abraxas"],
+		["Uncapped HP/Damage", 100, 0, 0, null, "Not available in normal gameplay"],
+		["[none]", 26, 0, 0, "Physical Defense"],["[none]", 61, 0, 0, "Physical Defense"],["[none]", 100, 0, 0, null, "Glaive"],
+		["Stifled Magic", 21, 0, 0, "Ultimate Physic"],["Fettered Magic", 41, 0, 0, "Ultimate Physic"],["Fettered Magic", 100, 0, 0, null, "Dragonhorn"],
+		["[none]", 26, 0, 0, "Magic Defense"],["[none]", 61, 0, 0, "Magic Defense"],["[none]", 100, 0, 0, null, "Rhomphaia"],
+		["Enfeeblement", 21, 0, 0, "Ultimate Magic"],["Hinderance", 41, 0, 0, "Ultimate Magic"],["Hinderance", 100, 0, 0, null, "Heretic's Halberd"],
+		["Stagger: TP Charge", 21, 0, 0, "Magic Defense"],["Stagger: TP Charge II", 41, 0, 0, "Magic Defense"],["Stagger: TP Charge II", 100, 0, 0, null, "Banescissor Spear"],
+		["Improved Debilitation", 21, 0, 0, "Positive Effect"],["Improved Debilitation II", 41, 0, 0, "Positive Effect"],["Improved Debilitation II", 100, 0, 0, null, "Calamity Spear"],
+		["Stagger Lock", 26, 0, 0, "Gestalt"],["Stagger Lock", 61, 0, 0, "Gestalt"],["Stagger Lock", 100, 0, 0, null, "Venus Gospel"],
+		["Improved Counter", 21, 0, 0, "Positive Effect"],["Improved Counter II", 41, 0, 0, "Positive Effect"],["Improved Counter II", 100, 0, 0, null, "Gungnir"],
+		["Uncapped HP/Damage", 100, 0, 0, null, "Not available in normal gameplay"]
+	];
+
+	prepareStringIndexedArray(accessories, [
+		["HP", "acc_", 1],["Iron Bangle", "acc_000_000"],["Silver Bangle", "acc_000_001"],
+			["Tungsten Bangle", "acc_000_002"],["Titanium Bangle", "acc_000_003"],["Gold Bangle", "acc_000_004"],
+			["Mythril Bangle", "acc_000_005"],["Platinum Bangle", "acc_000_006"],["Diamond Bangle", "acc_000_007"],
+			["Adamant Bangle", "acc_000_008"],["Wurtzite Bangle", "acc_000_009"],
+		["Strength", "acc_", 1],["Power Wristband", "acc_000_100"],["Brawler's Wristband", "acc_000_101"],
+			["Warrior's Wristband", "acc_000_102"],["Power Glove", "acc_000_103"],["Kaiser Knuckles", "acc_000_104"],
+		["Magic", "acc_", 1],["Magician's Mark", "acc_000_200"],["Shaman's Mark", "acc_000_201"],
+			["Sorcerer's Mark", "acc_000_202"],["Weirding Glyph", "acc_000_203"],["Magistral Crest", "acc_000_204"],
+		["Resist Physical", "acc_", 1],["Black Belt", "acc_000_300"],["General's Belt", "acc_000_301"],["Champion's Belt", "acc_000_302"],
+		["Resist Magic", "acc_", 1],["Rune Bracelet", "acc_000_400"],["Witch's Bracelet", "acc_000_401"],["Magus's Bracelet", "acc_000_402"],
+		["Resist Damage", "acc_", 1],["Royal Armlet", "acc_000_500"],["Imperial Armlet", "acc_000_501"],
+		["Resist Fire", "acc_", 1],["Ember Ring", "acc_001_000"],["Blaze Ring", "acc_001_001"],["Salamandrine Ring", "acc_001_002"],
+		["Resist Ice", "acc_", 1],["Frost Ring", "acc_002_000"],["Icicle Ring", "acc_002_001"],["Boreal Ring", "acc_002_002"],
+		["Resist Lightning", "acc_", 1],["Spark Ring", "acc_003_000"],["Fulmen Ring", "acc_003_001"],["Raijin Ring", "acc_003_002"],
+		["Resist Water", "acc_", 1],["Aqua Ring", "acc_004_000"],["Riptide Ring", "acc_004_001"],["Nereid Ring", "acc_004_002"],
+		["Resist Wind", "acc_", 1],["Zephyr Ring", "acc_005_000"],["Gale Ring", "acc_005_001"],["Sylphid Ring", "acc_005_002"],
+		["Resist Earth", "acc_", 1],["Clay Ring", "acc_006_000"],["Siltstone Ring", "acc_006_001"],["Gaian Ring", "acc_006_002"],
+		["Resist Debrave", "acc_", 1],["Giant's Glove", "acc_009_000"],["Warlord's Glove", "acc_009_001"],
+		["Resist Defaith", "acc_", 1],["Glass Buckle", "acc_010_000"],["Tektite Buckle", "acc_010_001"],
+		["Resist Deprotect", "acc_", 1],["Metal Armband", "acc_011_000"],["Ceramic Armband", "acc_011_001"],
+		["Resist Deshell", "acc_", 1],["Serenity Sachet", "acc_012_000"],["Safeguard Sachet", "acc_012_001"],
+		["Resist Slow", "acc_", 1],["Glass Orb", "acc_013_000"],["Dragonfly Orb", "acc_013_001"],
+		["Resist Poison", "acc_", 1],["Star Pendant", "acc_014_000"],["Starfall Pendant", "acc_014_001"],
+		["Resist Imperil", "acc_", 1],["Pearl Necklace", "acc_015_000"],["Gemstone Necklace", "acc_015_001"],
+		["Resist Curse", "acc_", 1],["Warding Talisman", "acc_016_000"],["Hexbane Talisman", "acc_016_001"],
+		["Resist Pain", "acc_", 1],["Pain Dampener", "acc_017_000"],["Pain Deflector", "acc_017_001"],
+		["Resist Fog", "acc_", 1],["White Cape", "acc_018_000"],["Effulgent Cape", "acc_018_001"],
+		["Resist Daze", "acc_", 1],["Rainbow Anklet", "acc_019_000"],["Moonbow Anklet", "acc_019_001"],
+		["Resist Death", "acc_", 1],["Cherub's Crown", "acc_020_000"],["Seraph's Crown", "acc_020_001"],
+		["Protect", "acc_", 1],["Guardian Amulet", "acc_025_000"],["Shield Talisman", "acc_025_001"],
+		["Shell", "acc_", 1],["Auric Amulet", "acc_026_000"],["Soulfont Talisman", "acc_026_001"],
+		["Veil", "acc_", 1],["Watchman's Amulet", "acc_027_000"],["Shrouding Talisman", "acc_027_001"],
+		["Bravery", "acc_", 1],["Hero's Amulet", "acc_028_000"],["Morale Talisman", "acc_028_001"],
+		["Faith", "acc_", 1],["Saint's Amulet", "acc_029_000"],["Blessed Talisman", "acc_029_001"],
+		["Vigilance", "acc_", 1],["Zealot's Amulet", "acc_035_000"],["Battle Talisman", "acc_035_001"],
+		["Barfire", "acc_", 1],["Flamebane Brooch", "acc_031_000"],["Flameshield Earring", "acc_031_001"],
+		["Barfrost", "acc_", 1],["Frostbane Brooch", "acc_032_000"],["Frostshield Earring", "acc_032_001"],
+		["Barthunder", "acc_", 1],["Sparkbane Brooch", "acc_033_000"],["Sparkshield Earring", "acc_033_001"],
+		["Barwater", "acc_", 1],["Aquabane Brooch", "acc_034_000"],["Aquashield Earring", "acc_034_001"],
+		["Haste", "acc_", 1],["Hermes Sandals", "acc_030_000"],["Sprint Shoes", "acc_030_001"],
+		["Tetradefense", "acc_", 1],["Tetradic Crown", "acc_036_000"],["Tetradic Tiara", "acc_036_001"],
+		["ATB/Evasion", "acc_", 1],["Whistlewind Scarf", "acc_037_000"],["Aurora Scarf", "acc_037_001"],["Nimbletoe Boots", "acc_038_000"],
+		["Battle Reward Bonuses", "acc_", 1],
+		["Gold Watch", "acc_040_000"],["Champion's Badge", "acc_040_001"],
+		["Survivalist Catalog", "acc_040_002"],["Collector Catalog", "acc_039_000"],["Connoisseur Catalog", "acc_039_001"],
+		["Kill Bonuses", "acc_", 1],["Hunter's Friend", "acc_041_000"],["Speed Sash", "acc_041_001"],["Energy Sash", "acc_041_002"],
+		["Improved Potions", "acc_", 1],["Doctor's Code", "acc_053_000"],
+		["Random Damage Nullify", "acc_", 1],["Fire Charm", "acc_047_000"],["Ice Charm", "acc_048_000"],
+			["Lightning Charm", "acc_049_000"],["Water Charm", "acc_050_000"],["Wind Charm", "acc_051_000"],
+			["Earth Charm", "acc_052_000"],["Twenty-sided Die", "acc_046_000"],
+		["CP x2", "acc_", 1],["Growth Egg", "acc_045_000"],
+		["Elemental Resistance/Rapid Recovery", "acc_", 1],["Entite Ring", "acc_007_000"],["Goddess's Favor", "acc_054_000"],
+		["Resiliance", "acc_", 1],["Ribbon", "acc_023_000"],["Super Ribbon", "acc_023_001"],
+		["Uncapped Damage", "acc_", 1],["Genji Glove", "acc_042_001"]
+	]);
+
+	accessories.notes = [
+		["HP: ??", 6, 50, 120, "High HP"],["HP: ??", 6, 100, 180, "Physical Defense"],["HP: ??", 11, 150, 230, "Low HP"],["HP: ??", 11, 200, 280, "Damage Reduction"],
+		["HP: ??", 11, 250, 350, "Magic Defense"],["HP: ??", 16, 300, 450, "High HP"],["HP: ??", 21, 400, 600, "Physical Defense"],["HP: ??", 26, 500, 1000, "Magic Defense"],
+		["HP: ??", 36, 800, 1500, "Damage Reduction"],["HP: ??", 51, 1000, 3000],
+		["Strength: ??", 6, 20, 60, "Physical Defense"],["Strength: ??", 11, 50, 120, "Physical Defense"],["Strength: ??", 11, 100, 180, "Physical Defense"],
+		["Strength: ??", 11, 150, 250, "Physical Defense"],["Strength: ??", 11, 200, 300, "Ultimate Physic"],
+		["Magic: ??", 6, 20, 60, "Magic Defense"],["Magic: ??", 11, 50, 120, "Magic Defense"],["Magic: ??", 11, 100, 180, "Magic Defense"],
+		["Magic: ??", 11, 150, 250, "Magic Defense"],["Magic: ??", 11, 200, 300, "Ultimate Magic"],
+		["Physical Resistance: ??%", 6, 10, 20, "Physical Defense"],["Physical Resistance: ??%", 11, 15, 25, "Physical Defense"],["Physical Resistance: ??%", 11, 20, 30, "Physical Defense"],
+		["Magic Resistance: ??%", 6, 10, 20, "Magic Defense"],["Magic Resistance: ??%", 11, 15, 25, "Magic Defense"],["Magic Resistance: ??%", 11, 20, 30, "Magic Defense"],
+		["Damage Resistance: ??%", 11, 5, 15],["Damage Resistance: ??%", 6, 10, 20],
+		["Fire Resistance: ??%", 6, 20, 30, "Fire Resistance"],["Fire Resistance: ??%", 6, 25, 35, "Fire Resistance"],["Fire Resistance: ??%", 6, 30, 40, "Fire Resistance"],
+		["Ice Resistance: ??%", 6, 20, 30, "Ice Resistance"],["Ice Resistance: ??%", 6, 25, 35, "Ice Resistance"],["Ice Resistance: ??%", 6, 30, 40, "Ice Resistance"],
+		["Lightning Resistance: ??%", 6, 20, 30, "Lightning Resistance"],["Lightning Resistance: ??%", 6, 25, 35, "Lightning Resistance"],["Lightning Resistance: ??%", 6, 30, 40, "Lightning Resistance"],
+		["Water Resistance: ??%", 6, 20, 30, "Water Resistance"],["Water Resistance: ??%", 6, 25, 35, "Water Resistance"],["Water Resistance: ??%", 6, 30, 40, "Water Resistance"],
+		["Wind Resistance: ??%", 6, 20, 30, "Wind Resistance"],["Wind Resistance: ??%", 6, 25, 35, "Wind Resistance"],["Wind Resistance: ??%", 6, 30, 40, "Wind Resistance"],
+		["Earth Resistance: ??%", 6, 20, 30, "Earth Resistance"],["Earth Resistance: ??%", 6, 25, 35, "Earth Resistance"],["Earth Resistance: ??%", 6, 30, 40, "Earth Resistance"],
+		["Debrave Resistance: ??%", 6, 30, 45, "Debrave Resistance"],["Debrave Resistance: ??%", 11, 40, 60, "Debrave Resistance"],
+		["Defaith Resistance: ??%", 6, 30, 45, "Defaith Resistance"],["Defaith Resistance: ??%", 11, 40, 60, "Defaith Resistance"],
+		["Deprotect Resistance: ??%", 6, 30, 45, "Deprotect Resistance"],["Deprotect Resistance: ??%", 11, 40, 60, "Deprotect Resistance"],
+		["Deshell Resistance: ??%", 6, 30, 45, "Deshell Resistance"],["Deshell Resistance: ??%", 11, 40, 60, "Deshell Resistance"],
+		["Slow Resistance: ??%", 6, 30, 45, "Slow Resistance"],["Slow Resistance: ??%", 11, 40, 60, "Slow Resistance"],
+		["Poison Resistance: ??%", 6, 30, 45, "Poison Resistance"],["Poison Resistance: ??%", 11, 40, 60, "Poison Resistance"],
+		["Imperil Resistance: ??%", 6, 30, 45, "Imperil Resistance"],["Imperil Resistance: ??%", 11, 40, 60, "Imperil Resistance"],
+		["Curse Resistance: ??%", 6, 30, 45, "Curse Resistance"],["Curse Resistance: ??%", 11, 40, 60, "Curse Resistance"],
+		["Pain Resistance: ??%", 6, 30, 45, "Pain Resistance"],["Pain Resistance: ??%", 11, 40, 60, "Pain Resistance"],
+		["Fog Resistance: ??%", 6, 30, 45, "Fog Resistance"],["Fog Resistance: ??%", 11, 40, 60, "Fog Resistance"],
+		["Daze Resistance: ??%", 6, 30, 45, "Daze Resistance"],["Daze Resistance: ??%", 11, 40, 60, "Daze Resistance"],
+		["Death Resistance: ??%", 6, 30, 45, "Adamancy"],["Death Resistance: ??%", 11, 40, 60, "Adamancy"],
+		["Critical: Protect", 2, 0, 0, "Physical Defense"],["Auto-Protect", 2, 0, 0, "Physical Defense"],
+		["Critical: Shell", 2, 0, 0, "Magic Defense"],["Auto-Shell", 2, 0, 0, "Magic Defense"],
+		["Critical: Veil", 2, 0, 0, "Positive Effect"],["Auto-Veil", 2, 0, 0, "Positive Effect"],
+		["Critical: Bravery", 2, 0, 0, "Physical Defense"],["Auto-Bravery", 2, 0, 0, "Physical Defense"],
+		["Critical: Faith", 2, 0, 0, "Magic Defense"],["Auto-Faith", 2, 0, 0, "Magic Defense"],
+		["Critical: Vigilance", 2, 0, 0, "Adamancy"],["Auto-Vigilance", 2, 0, 0, "Adamancy"],
+		["Critical: Barfire", 2, 0, 0, "Fire Resistance"],["Auto-Barfire", 2, 0, 0, "Fire Resistance"],
+		["Critical: Barfrost", 2, 0, 0, "Ice Resistance"],["Auto-Barfrost", 2, 0, 0, "Ice Resistance"],
+		["Critical: Barthunder", 2, 0, 0, "Lightning Resistance"],["Auto-Barthunder", 2, 0, 0, "Lightning Resistance"],
+		["Critical: Barwater", 2, 0, 0, "Water Resistance"],["Auto-Barwater", 2, 0, 0, "Water Resistance"],
+		["Critical: Haste", 2, 0, 0, "Boost"],["Auto-Haste", 2, 0, 0, "Boost"],
+		["Critical: Tetradefense", 2, 0, 0],["Auto-Tetradefense", 2, 0, 0],
+		["ATB Advantage", 2, 0, 1, "Boost", "Always has a modifier of 1 at max level under normal gameplay<br>Unknown effects from changing this"],
+		["First Strike", 2, 0, 0, "Boost"],
+		["Improved Evasion", 2, 10, 10, "Boost", "Always has a modifier of 10 under normal gameplay<br>Unknown effects from changing this"],
+		["Time Extension", 2, 0, 0],["Victory: TP Charge", 2, 0, 0, "Gestalt"],["Shroud Scavenger", 2, 0, 0, "Gestalt"],["Item Scavenger", 2, 0, 0],["Item Collector", 2, 0, 0],
+		["Kill: Libra", 2, 0, 0, "Gestalt"],["Kill: ATB Charge", 2, 0, 0, "Gestalt"],["Kill: TP Charge", 2, 0, 0, "Gestalt"],
+		["Improved Potions", 2, 0, 0],
+		["Random: Fire Eater", 2, 0, 0, "Fire Resistance"],["Random: Ice Eater", 2, 0, 0, "Ice Resistance"],["Random: Lightning Eater", 2, 0, 0, "Lightning Resistance"],["Random: Water Eater", 2, 0, 0, "Water Resistance"],
+		["Random: Wind Eater", 2, 0, 0, "Wind Resistance"],["Random: Earth Eater", 2, 0, 0, "Earth Resistance"],["Random: Nullify Damage", 2, 0, 0],
+		["CP: ×2", 2, 0, 0],
+		["Elements Resistance: ??%", 16, 10, 25],["Rapid Recovery", 2, 0, 0],
+		["Resiliance: ??%", 6, 20, 25],["Resiliance: ??%", 6, 25, 30],
+		["Uncapped Damage", 2, 0, 0]
+	];
+}
+
+// Pad a number as a string by adding characters then slicing from the left
+// Will not crop a number that is already longer than the padding length
+function padNumber(number, padString) {
+	if (number >= (10 ** padString.length)) {
+		return number.toString();
+	}
+	else if (number < 0) {
+		return '-' + (padString + (number * -1)).slice((padString.length * -1))
+	}
+	else {
+		return (padString + number).slice(((padString.length) * -1))
+	}
+}
+// Same but for strings so does not even consider numerical properties
+function padString(text, padString, padRight) {
+	if (padRight) return (text + padString).slice(0, (padString.length-1))
+	else          return (padString + text).slice((padString.length * -1))
+}
+// If you want to sort an array of numbers
+function compareNumbers(a, b) {
+  return a - b;
+}
+		</script>
+	</body>
+</html>
