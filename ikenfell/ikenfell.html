@@ -1,0 +1,1848 @@
+﻿<!doctype html>
+<html>
+	<head>
+		<title>Ikenfell Save Editor</title>
+		<style>
+/********* GLOBAL *********/
+:root {
+	color: #DDD;
+	background-color: #222;
+	font-family: sans-serif;
+	font-size: 14px;
+	line-height: 1.2em;
+}
+
+#global,
+#selector,
+#editor,
+#editor > div.group {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: start;
+	& .wrap { align-self: stretch; }
+}
+header,
+#global,
+#page {
+	margin: 5px;
+	&:not(#page, #global) { padding: 5px; }
+	&:not(#page) { border: 1px solid #AAA; }
+}
+header,
+#global,
+#editor > div { background-color: #333; }
+
+#log { margin-left: 20px; }
+
+/********* EDITOR LAYOUT *********/
+#global {
+	align-items: center;
+	/* top/bottom padding need to be 0 in #global for vertical separators to work properly */
+	padding: 0 5px;
+}
+#global > button {
+	margin: 8px 3px 8px 0;
+}
+#global > span {
+	align-self: stretch;
+	padding: 5px 3px;
+}
+#global > span.group {
+	display: inline-flex;
+	column-gap: 6px;
+	align-items: center;
+	margin-left: 5px;
+	padding-left: 5px;
+	border-left: 1px solid #AAA;
+}
+
+/* Defer spacing to element margins */
+.tight-spacing { gap: 0 !important; }
+/* align-items: start looks better for checkboxes + labels which is what this is intended for */
+#editor div.tight-spacing:has(input[type="checkbox"]) { align-items: start; }
+
+#selector {
+	justify-content: left;
+	gap: 3px 3px;
+	&.active { margin-bottom: 5px; }
+}
+/* Allow flexing on all addSubPageButton() buttons and on makeButton() buttons when there is only one */
+#selector > button,
+#selector > span:first-child:last-child { flex: auto; }
+
+#editor > div {
+	margin: 0 5px 5px 0;
+	padding: 8px;
+	border: 1px solid #AAA;
+}
+
+#editor > div,
+#editor > div.group > div {
+	&.wrap {
+		margin: 0 -1px -1px 0;
+		border-right: 1px solid #AAA;
+	}
+}
+
+/* Assume two columns as the default grid */
+/* Adding more classes each time you need more columns seems jank but it's the neatest way to line up headers with fields */
+#editor > div:not(.group),
+#editor > div.group > div {
+	display: grid;
+	align-items: center;
+	align-content: start;
+	gap: 6px 6px;
+	flex: none;
+}
+#editor div.gridOne { grid-template-columns: repeat(1, auto); }
+#editor div:not([class*="grid"]) { grid-template-columns: repeat(2, auto); }
+#editor div.gridThree { grid-template-columns: repeat(3, auto); }
+#editor div.gridFour { grid-template-columns: repeat(4, auto); }
+#editor div.gridFive { grid-template-columns: repeat(5, auto); }
+#editor div.gridSix { grid-template-columns: repeat(6, auto); }
+
+#editor .colRight {
+	justify-self: end;
+	text-align: right;
+}
+
+/* Establish containing block if needed */
+#editor div:has(> .header + .header) { position: relative; }
+
+#editor > div.group {
+	gap: 0;
+	padding: 0;
+	& > div { padding: 8px; }
+}
+#editor > div:has(.monospace) {
+	/* 2 * (padding: 8px; + border: 1px;) */
+	max-width: calc(100% - 18px);
+	overflow-x: auto;
+}
+
+span.gridSpan {
+	grid-column: 1 / -1;
+	white-space: nowrap;
+}
+
+/* Smooth out vertical alignment of checkbox labels */
+/*
+#editor input[type="checkbox"] {
+	& + span {
+		display: inline-flex;
+		padding-top: 2px;
+		white-space: pre;
+	}
+}
+*/
+/********* FORM CONTROLS *********/
+input,
+select,
+textarea {
+	color: #DDD;
+	background-color: #222;
+	border: 1px solid #DDD;
+}
+
+#editor optgroup {
+	padding: 0;
+	color: #222;
+	background-color: #DDD;
+	font-style: normal;
+}
+
+button {
+	padding: 2px 5px;
+	color: #DDD;
+	background-color: #444;
+	border: 1px solid #DDD;
+}
+button[disabled] { opacity: 50%; }
+button.selected { border: 1px solid #AAA }
+
+input[type="file"] { border: none; }
+select[disabled],
+input[disabled],
+button.selected {
+	color: #222;
+	background-color: #888;
+}
+
+article div .sortValue { width: 25px; }
+article div .smallValue { width: 50px; }
+article div .mediumValue { width: 90px; }
+article div .largeValue { width: 125px; }
+article div .stringValue { width: 175px; }
+article div .hugeValue { width: 250px; }
+article div .fixedString { display: inline-block; }
+article div .dynamic { text-decoration: underline; }
+article div [type="date"],
+article div [type="time"] { width: auto; }
+article div [type="checkbox"] { max-width: 15px; }
+
+input { padding-right: 0; }
+input:invalid { border: 1px solid red; }
+
+textarea { resize: vertical }
+
+#save.dirty {
+	color: #DDD;
+	background-color: #383;
+}
+
+/********* MISCELLANEOUS STYLES *********/
+span.header {
+	&.gridSpan:has(+ .header) {
+		position: absolute;
+		top: 8px;
+		width: 100%;
+		height: 1lh;
+		background-color: rebeccapurple;
+	}
+	text-align: center;
+	background-color: rebeccapurple;
+	font-weight: bold;
+	z-index: 1;
+}
+span.subhead {
+	text-align: center;
+	font-weight: bold;
+}
+.monospace {
+	white-space: pre;
+	font-family: monospace;
+}
+span.right { justify-self: right !important; }
+span.disabled { color: #888; }
+span.warning { color: #B33; }
+span.good { color: #3B3; }
+span.tag { color: #3BB }
+
+span.button {
+	display: inline-grid;
+	position: relative;
+	white-space: nowrap;
+}
+span.button > div {
+	display: flex;
+	align-items: center;
+	position: absolute;
+	top: 20px;
+	padding: 5px;
+	border: 1px solid #DDD;
+	color: #DDD;
+	background-color: #444;
+	font-weight: normal;
+}
+span.button > div > * {
+	white-space: nowrap;
+	text-align: left !important;
+}
+span.button.right > div { right: 0; }
+span.button.left > div { left: 0; }
+
+.dynamic.active {
+	justify-self: start !important;
+	position: relative;
+	& > span {
+		display: inline-flex;
+		position: absolute;
+		/* Pretty much impossible to perfectly line up item-editor inputs with the inputs adjacent to underlying label across all browsers/systems */
+		/* This seems to work, at least as long as the underlying label has text in it — but it's very fragile */
+		top: calc((((0px - 1lh)) / 2) + 7px);
+		left: 0;
+		padding: 0;
+		color: #DDD;
+		background-color: #555;
+		box-shadow: 0 0 3px 6px #555
+	}
+	& button {
+		margin-left: 1px;
+		padding: 0;
+		text-align: center;
+		font-weight: bold;
+	}
+	& .close-button > button {
+		width: 20px;
+		color: #900;
+		background-color: #222;
+	}
+	& .delete-button > button {
+		padding: 0 5px;
+		margin-left: 10px;
+		color: #DDD;
+		background-color: #900;
+	}
+}
+
+#editor span:has(span.note) { display: inline-flex; }
+span.note { font-weight: normal; }
+span.note:not(.dynamic) { padding-left: 3px; }
+span.note.small { font-size: 0.8rem; }
+span.note.small > * { font-size: 1rem; }
+span.note > span { display: none; }
+span.note:hover { position: relative; }
+span.note:hover > span {
+	display: inline-block;
+	text-align: left;
+	position: absolute;
+	top: 20px;
+	min-width: 100px;
+	padding: 3px;
+	box-shadow: 0 0 5px 5px black;
+	color: #222;
+	background-color: #DD9;
+	white-space: nowrap;
+	font-size: 0.9rem;
+	font-weight: normal;
+	z-index: 1000;
+}
+/* Has been used in other editors based on this framework — needs re-evaluating when this code is re-integrated into an editor where it was used */
+/*
+span.separator {
+	border-bottom: 1px dotted #DDD;
+	padding-bottom: 5px;
+	margin-bottom: 5px;
+}
+*/
+#editor span:has(span.note) { align-self: start; }
+		</style>
+		<style>
+/*  This is just for the filter, so it can be targeted from the stylesheets object without interfering with other styles */
+		</style>
+	</head>
+	<body>
+		<header>
+			<span>
+				<label>Choose file: <input type=file id=inputFile autocomplete=off accept=""></label>
+				<button type=button id=save disabled autocomplete=off>Save Changes</button>
+			</span>
+			<span id=log>Ikenfell Save Editor — Default Save Location: <span id=savedir>%APPDATA%\ikenfell\<span></span>
+		</header>
+		<article spellcheck=false>
+			<div id=global>
+			</div>
+			<div id=page>
+				<div id=selector></div>
+				<div id=editor><div>ALWAYS REMEMBER TO BACKUP YOUR SAVES<br>I accept no responsibily for any problems that occur from using this editor</div></div>
+			</div>
+		</article>
+		<script>
+'use strict';
+
+// For Testing - Add '?debug' to the end of the address bar to enable
+const debug = (location.search.match(/debug/)) ? 1 : 0;
+
+// Data Type IDs
+const custom = 1;
+const uint8 = 2;
+const int8 = 3;
+const uint16 = 4;
+const int16 = 5;
+const uint24 = 6;
+const uint32 = 7;
+const int32 = 8;
+const uint64 = 9;
+const int64 = 10;
+const float32 = 11;
+const arrayIndexed8 = 12;
+const arrayIndexed16 = 13;
+const arrayIndexed32 = 14;
+const arrayStringIndexed = 15;
+const checkbox8 = 16;
+const checkbox32 = 17;
+const text = 18;
+const bitmask = 19;
+const debugToString = 20;
+
+const callbackAfterLoad = 1;
+const callbackCustomLoad = 2;
+const callbackBeforeSave = 3;
+const callbackAfterSave = 4;
+const callbackCustomSave = 5;
+const callbackClickActivation = 6;
+// Modifier Mode (when loading, will be reverse action when saving)
+const modAdd = 1;
+const modSubtract = 2;
+const modMultiply = 3;
+const modDivide = 4;
+
+// Tags for <select> arrays
+const isHeader = 0x1;
+const isDebug = 0x2;
+const isSpoiler = 0x4;
+const isBlankEntry = 0x8;
+
+// Store references to a few HTML elements
+var header = document.querySelector('header');
+var inputFile = document.querySelector('#inputFile');
+var save = document.querySelector('#save');
+var log = document.querySelector('#log'); // Used to test data validation fails during development
+var savedir = document.querySelector('#savedir');
+var global = document.querySelector('#global');
+var selector = document.querySelector('#selector');
+var editor = document.querySelector('#editor');
+
+// Desktop Safari sucks — I believe it supports it now but it took a long time - no harm leaving this test in place
+var dateTimeSupport = testDateInput();
+
+var selectedPage = 0;
+var pageButtons = [];
+var pageParty = addPageButton('Party', true);
+var pageEquipment = addPageButton('Equipment', true);
+var pageItems = addPageButton('Items', true);
+var pageAdvanced = addPageButton('Advanced', true);
+defaultPage(pageParty);
+
+var editorFields;
+
+var fileName='';
+
+// Will contain the DataView for our ArrayBuffer
+var rawData;
+
+var decodeUTF8 = new TextDecoder('utf-8');
+var encodeUTF8 = new TextEncoder();
+
+// Constants for little-endian/big-endian while manipulating the DataView
+const LE = true, BE = false;
+var defaultEndianness = LE;
+
+// Data
+var spoilers = false;
+var data;
+var lineEnding;
+var names;
+var weapon;
+var headgear;
+var garment;
+var footwear;
+var accessory;
+var consumable;
+var keyItem;
+var party;
+const hintBool = 1;
+const hintMulti = 2;
+var keys;
+
+// IDs
+var maritte = 0;
+var petronella = 1;
+var rook = 2;
+var pertisia = 3;
+var ima = 4;
+var gilda = 5;
+var inventoryMoney = 6;
+var summerstoneMemory = 7;
+var maritteTransformed = 8;
+var meetLibrarian = 9;
+var pertyScar = 10;
+var rechargeElixir = 11;
+var rechargePurify = 12;
+var rechargeShatter = 13;
+var rechargeStarborn = 14;
+var rechargeShock = 15;
+var rechargeThunderstorm = 16;
+var rechargeTeleport = 17;
+var inventoryItems = 18;
+var partyMembers = 19;
+
+// SubIDs
+var partyLevel = 0;
+var partyExp = 1;
+var partyHP = 2;
+var partyEquipWeapon = 3;
+var partyEquipHeadgear = 4;
+var partyEquipGarment = 5;
+var partyEquipFootwear = 6;
+var partyEquipAccessory = 7;
+var partyLocked = 8;
+var partyAI = 9;
+var partyTrial = 10;
+
+document.addEventListener('dragenter', handleDrag, false);
+document.addEventListener('dragover', handleDrag, false);
+function handleDrag(e) { e.preventDefault(); }
+
+inputFile.addEventListener('change', loadFile, false);
+document.addEventListener('drop', loadFile, false);
+
+savedir.addEventListener('click', selectTarget, false);
+function selectTarget(e) {
+		let selection = window.getSelection();
+		let range = document.createRange();
+		range.selectNode(e.target)
+		selection.removeAllRanges();
+		selection.addRange(range);
+	}
+save.addEventListener('click', saveFile, false);
+
+global.addEventListener('click', changePage, true); // Capturing
+
+// Capture and save changes to values
+document.querySelector('article').addEventListener('input', valueChanged, true);
+
+// Called from a 'change' event on the file input or 'drop' event
+function loadFile(e) {
+	let reader, file;
+
+	// Are we getting files from a drop event or <input type="file">
+	// Assumes if multiple files were selected we just want the first one
+	if (e.dataTransfer && e.dataTransfer.files) {
+		e.preventDefault();
+		e.stopPropagation();
+		file = e.dataTransfer.files[0];
+	}
+	else if (e.target.files) { file = e.target.files[0]; }
+
+	if (file) {
+		fileName = file.name;
+
+		reader = new FileReader();
+		reader.onload = function (e) {
+			// Keep DataView as a global variable because it's the laziest way
+			// Can access the buffer itself from rawData.buffer when needed
+			rawData = this.result;
+			parseFile();
+		}
+		reader.readAsText(file);
+	}
+}
+
+function parseFile() {
+	setPageButtonsDisabled(true);
+	data = [];
+	lineEnding = rawData.match(/[\x0A\x0D]+/)[0];
+	resetKeys();
+	for (let line of rawData.matchAll(/([^=]+)=([^\r\n]*)[\r\n]+/g)) data.push([line[1], line[2]]);
+	if (data.length > 0) {
+		for (let i = 0; i < data.length; i++) {
+			addHint(i);
+			checkKey(data[i][0], i);
+		}
+		if (getKey(maritte, partyLevel) === -1) defaultPage(pageAdvanced);
+		else setPageButtonsDisabled(false);
+		getPartyMembers();
+		setFileDirty(false);
+		createUI();
+	}
+	else { editor.innerHTML = '<div>ERROR — FILE NOT LOADED</div>'; }
+}
+
+function resetKeys() {
+	keys = [];
+	keys[maritte] = [];
+	keys[petronella] = [];
+	keys[rook] = [];
+	keys[pertisia] = [];
+	keys[ima] = [];
+	keys[gilda] = [];
+}
+
+function addHint(position) {
+		if (getValue(position).match(/^(?:True|False)$/i)) data[position].push(hintBool);
+		else if (getValue(position).match(/,/)) {
+			data[position].push(hintMulti);
+			data[position].push(data[position][1].match(/,/g).length + 1);
+		}
+		else if (data[position][0].match(/^Bestiary_(?:encountered|defeated|scanned|stolen)$/)) {
+			data[position].push(hintMulti);
+			data[position].push(10);
+		}
+}
+
+function checkKey(key, position) {
+	switch(true) {
+		case key.match(/(?:^trial_Maritte$|^Maritte_(?:level|exp|hp|equip[0-4]|locked|ai_controlled)$)/) !== null:       setKey(position, maritte, partyMemberDetail(key, position)); break;
+		case key.match(/(?:^trial_Petronella$|^Petronella_(?:level|exp|hp|equip[0-4]|locked|ai_controlled)$)/) !== null: setKey(position, petronella, partyMemberDetail(key, position)); break;
+		case key.match(/(?:^trial_Rook$|^Rook_(?:level|exp|hp|equip[0-4]|locked|ai_controlled)$)/) !== null:             setKey(position, rook, partyMemberDetail(key, position)); break;
+		case key.match(/(?:^trial_Pertisia$|^Pertisia_(?:level|exp|hp|equip[0-4]|locked|ai_controlled)$)/) !== null:     setKey(position, pertisia, partyMemberDetail(key, position)); break;
+		case key.match(/(?:^trial_Ima$|^Ima_(?:level|exp|hp|equip[0-4]|locked|ai_controlled)$)/) !== null:               setKey(position, ima, partyMemberDetail(key, position)); break;
+		case key.match(/(?:^trial_Gilda$|^Gilda_(?:level|exp|hp|equip[0-4]|locked|ai_controlled)$)/) !== null:           setKey(position, gilda, partyMemberDetail(key, position)); break;
+		case key.match(/^Inventory_money$/) !== null: setKey(position, inventoryMoney); break;
+		case key.match(/^summerstone_memory$/) !== null: setKey(position, summerstoneMemory); break;
+		case key.match(/^maritte_transformed$/) !== null: setKey(position, maritteTransformed); break;
+		case key.match(/^meet_librarian$/) !== null: setKey(position, meetLibrarian); break;
+		case key.match(/^perty_scar$/) !== null: setKey(position, pertyScar); break;
+		case key.match(/^Ability[A-Za-z]+_recharge$/) !== null: setKey(position, abilityRechargeDetail(key, position)); break;
+		case key.match(/^Inventory_items$/) !== null: setKey(position, inventoryItems); break;
+		case key.match(/^Party_members$/) !== null: setKey(position, partyMembers); break;
+	}
+}
+
+function partyMemberDetail(key, position) {
+	switch(true) {
+		case key.match(/_level$/) !== null: return partyLevel;
+		case key.match(/_exp$/) !== null: return partyExp;
+		case key.match(/_hp$/) !== null: return partyHP;
+		case key.match(/_equip0$/) !== null: return partyEquipWeapon;
+		case key.match(/_equip1$/) !== null: return partyEquipHeadgear;
+		case key.match(/_equip2$/) !== null: return partyEquipGarment;
+		case key.match(/_equip3$/) !== null: return partyEquipFootwear;
+		case key.match(/_equip4$/) !== null: return partyEquipAccessory;
+		case key.match(/_locked$/) !== null: return partyLocked;
+		case key.match(/_ai_controlled$/) !== null: return partyAI;
+		case key.match(/^trial_/) !== null: return partyTrial;
+	}
+}
+
+function abilityRechargeDetail(key, position) {
+	switch(true) {
+		case key.match(/Elixir/) !== null: return rechargeElixir;
+		case key.match(/Purify/) !== null: return rechargePurify;
+		case key.match(/Shatter/) !== null: return rechargeShatter;
+		case key.match(/Starborn/) !== null: return rechargeStarborn;
+		case key.match(/Shock/) !== null: return rechargeShock;
+		case key.match(/Thunderstorm/) !== null: return rechargeThunderstorm;
+		case key.match(/Teleport/) !== null: return rechargeTeleport;
+	}
+}
+
+function getPartyMembers() {
+	let partyValue = getValue(getKey(partyMembers));
+	party = [];
+	for (let member of partyValue.split(',')) {
+		switch(member) {
+		case 'Maritte': party.push(maritte); break;
+		case 'Petronella': party.push(petronella); break;
+		case 'Rook': party.push(rook); break;
+		case 'Pertisia': party.push(pertisia); break;
+		case 'Ima': party.push(ima); break;
+		case 'Gilda': party.push(gilda); break;
+		}
+	}
+}
+
+function saveFile() {
+	rawData = '';
+	for (let line of data) {
+		if (line[0].length > 0) rawData += line.toSpliced(2).join('=') + lineEnding;
+	}
+
+	let fileURL = URL.createObjectURL(new File([rawData], fileName, { type: "application/octet-stream",}));
+
+	// Should just be able to set: location = fileURL (otherwise there's little point to being able to set the fileName property in the File constructor)
+	// But WebKit/Blink doesn't use specified file name in this instance so use workaround of creating anchor with the download property
+	let fileAnchor = document.createElement("a");
+	fileAnchor.href = fileURL;
+	fileAnchor.download = fileName;
+	fileAnchor.click();
+
+	// No way to detect when blob: URL is no longer needed & sometimes revoking it too quickly can cause problems
+	// Completely arbitrary timing used
+	setTimeout(function() { URL.revokeObjectURL(fileURL);}, 1000);
+
+	// No easy way to check user cancelled "download" but clear dirty flag anyway
+	setFileDirty(false);
+}
+
+/*************************************************************************************************************************************************************
+ * Good place to insert any other functions that might be used when loading files
+ *************************************************************************************************************************************************************/
+
+function defaultPage(pageId) {
+	for (let pageButton of pageButtons) { pageButton.classList.remove('selected'); }
+	selectedPage = pageId;
+	pageButtons[pageId].classList.add('selected');
+}
+
+function changePage(e) {
+	if (e.target.tagName.match(/button/i) &&
+		!(e.target.disabled)) {
+		pageButtons[selectedPage].classList.remove('selected');
+		selectedPage = Number(e.target.value);
+		pageButtons[selectedPage].classList.add('selected');
+		createUI();
+	}
+}
+
+function setPageButtonsDisabled(state) {
+	let i, button;
+	save.disabled = state;
+	for (i = 0; button = pageButtons[i]; i++) button.disabled = state;
+}
+
+function setFileDirty(state) {
+	if (state) document.getElementById('save').classList.add('dirty');
+	else document.getElementById('save').classList.remove('dirty');
+}
+
+function clearGlobals() {
+	while (pageButtons[pageButtons.length-1].nextElementSibling) {
+		global.removeChild(pageButtons[pageButtons.length-1].nextElementSibling)
+	}
+}
+
+/*************************************************************************************************************************************************************
+ * BUILD THE UI BASED ON SELECTED PAGE
+ *************************************************************************************************************************************************************/
+function createUI() {
+	loadData();
+	editorFields = [];
+	let i, j, selectData, baseElement, baseOffset, scratchValues, wrapCounter, wrapSize, pending;
+
+	// Defaults for wrapping long columns
+	wrapCounter = 0;
+	wrapSize = 25;
+
+	// Reset Editor
+	clearGlobals();
+	selector.innerHTML = '';
+	selector.className = '';
+	editor.innerHTML = '';
+	editor.className = '';
+
+	pending = document.createDocumentFragment();
+	baseElement = makeSpan(pending, 'group', 'Money');
+	makeInput(baseElement, 'mediumValue', 'number', getKey(inventoryMoney), custom, updateData, [0, 99999]);
+	baseElement = makeSpan(pending, 'group tight-spacing', 'Show Spoilers');
+	makeCheckbox(baseElement, '', 0, custom, toggleSpoilers)
+	global.appendChild(pending);
+
+	switch (selectedPage) {
+	case pageParty://**************************************************************************************************
+		for (scratchValues of party) {
+			// Shouldn't be in party without their value being available, but still check
+			if (getKey(scratchValues, partyLevel) !== -1) addPartyBlock(scratchValues, names[scratchValues]);
+		}
+		// I don't think anyone ever gets removed from the party, so this should mever be a thing
+		if (spoilers) {
+			for (scratchValues of [maritte,petronella,rook,pertisia,ima,gilda]) {
+				if (!inParty(scratchValues)) {
+					if (getKey(scratchValues, partyLevel) !== -1) addPartyBlock(scratchValues, names[scratchValues]);
+				}
+			}
+		}
+
+		function addPartyBlock(partyMember, name) {
+			pending = makeDiv();
+			makeSpan(pending, 'header gridSpan', name);
+			makeSpan(pending, 'colRight', 'Level');
+				makeInput(pending, 'smallValue ', 'number', getKey(partyMember, partyLevel), custom, updateData, [1, 30]);
+			makeSpan(pending, 'colRight', 'EXP');
+				makeInput(pending, 'smallValue ', 'number', getKey(partyMember, partyExp), custom, updateData, [0, 1000]);
+			makeSpan(pending, 'colRight', 'HP');
+				makeInput(pending, 'smallValue ', 'number', getKey(partyMember, partyHP), custom, updateData, [0, 99]);
+			makeSpan(pending, 'colRight', 'Weapon');
+				makeSelect(pending, '', weapon[partyMember].select, getKey(partyMember, partyEquipWeapon), custom, updateData, [weapon[partyMember]]);
+			makeSpan(pending, 'colRight', 'Headgear');
+				makeSelect(pending, '', headgear.select, getKey(partyMember, partyEquipHeadgear), custom, updateData, [headgear]);
+			makeSpan(pending, 'colRight', 'Garment');
+				makeSelect(pending, '', garment.select, getKey(partyMember, partyEquipGarment), custom, updateData, [garment]);
+			makeSpan(pending, 'colRight', 'Footwear');
+				makeSelect(pending, '', footwear.select, getKey(partyMember, partyEquipFootwear), custom, updateData, [footwear]);
+			makeSpan(pending, 'colRight', 'Accessory');
+				makeSelect(pending, '', accessory.select, getKey(partyMember, partyEquipAccessory), custom, updateData, [accessory]);
+			makeSpan(pending, 'colRight', 'Party Position Locked');
+				makeCheckbox(pending, '', getKey(partyMember, partyLocked), custom, updateData, '');
+			makeSpan(pending, 'colRight', 'AI Controlled');
+				makeCheckbox(pending, '', getKey(partyMember, partyAI), custom, updateData, '');
+			
+			baseElement = document.createDocumentFragment();
+			//makeSpan(baseElement, 'header gridSpan', 'Ability Cooldowns');
+			switch (partyMember) {
+			case petronella:
+				if (getKey(rechargeElixir) >= 0) {
+					makeSpan(baseElement, 'colRight', 'Salve Cooldown');
+					makeInput(baseElement, 'smallValue ', 'number', getKey(rechargeElixir), custom, updateRechargeData, [0, 3]);
+				}
+				if (getKey(rechargePurify) >= 0) {
+					makeSpan(baseElement, 'colRight', 'Soothing Cooldown');
+					makeInput(baseElement, 'smallValue ', 'number', getKey(rechargePurify), custom, updateRechargeData, [0, 3]);
+				}
+				break;
+			case pertisia:
+				if (getKey(rechargeShatter) >= 0) {
+					makeSpan(baseElement, 'colRight', 'Shatter Cooldown');
+					makeInput(baseElement, 'smallValue ', 'number', getKey(rechargeShatter), custom, updateRechargeData, [0, 3]);
+				}
+				break;
+			case ima:
+				if (getKey(rechargeStarborn) >= 0) {
+					makeSpan(baseElement, 'colRight', 'Starborn Cooldown');
+					makeInput(baseElement, 'smallValue ', 'number', getKey(rechargeStarborn), custom, updateRechargeData, [0, 2]);
+				}
+				break;
+			case gilda:
+				if (getKey(rechargeShock) >= 0) {
+					makeSpan(baseElement, 'colRight', 'Shocker Cooldown');
+					makeInput(baseElement, 'smallValue ', 'number', getKey(rechargeShock), custom, updateRechargeData, [0, 2]);
+				}
+				if (getKey(rechargeThunderstorm) >= 0) {
+					makeSpan(baseElement, 'colRight', 'Thunderstorm Cooldown');
+					makeInput(baseElement, 'smallValue ', 'number', getKey(rechargeThunderstorm), custom, updateRechargeData, [0, 2]);
+				}
+				if (getKey(rechargeTeleport) >= 0) {
+					makeSpan(baseElement, 'colRight', 'Teleport Cooldown');
+					makeInput(baseElement, 'smallValue ', 'number', getKey(rechargeTeleport), custom, updateRechargeData, [0, 3]);
+				}
+				break;
+			}
+			if (baseElement.children.length > 1) pending.appendChild(baseElement);
+
+			if (spoilers) {
+				makeSpan(pending, 'header gridSpan', 'Spoilers');
+				makeSpan(pending, 'colRight', 'Trial Completed');
+					makeCheckbox(pending, '', getKey(partyMember, partyTrial), custom, updateData, '', [`trial_${name}`]);
+				switch (partyMember) {
+				case maritte:
+					baseElement = makeSpan(pending, 'colRight', 'Is Sad');
+						makeSpan(makeSpan(baseElement, 'note small', '[?]'), '', 'Seals Maritte\'s Magic. Will have other effects.<br>Sets "Maritte_locked" and "summerstone_memory" to true<br>May also affect current chapter displayed on save screen');
+						makeCheckbox(pending, '', getKey(summerstoneMemory), custom, updateMaritteMood, '');
+					baseElement = makeSpan(pending, 'colRight', 'Transformed');
+						makeSpan(makeSpan(baseElement, 'note small', '[?]'), '', 'Sets "maritte_transformed"');
+						makeCheckbox(pending, '', getKey(maritteTransformed), custom, updateData, '', ['maritte_transformed']);
+					break;
+				case petronella:
+					baseElement = makeSpan(pending, 'colRight', 'Smiling Portrait');
+						makeSpan(makeSpan(baseElement, 'note small', '[?]'), '', 'Sets "meet_librarian"<br>Will likely have other effects<br>');
+						makeCheckbox(pending, '', getKey(meetLibrarian), custom, updateData, '', ['meet_librarian']);
+					break;
+				case pertisia:
+					baseElement = makeSpan(pending, 'colRight', 'Scar Visible');
+						makeSpan(makeSpan(baseElement, 'note small', '[?]'), '', 'Sets "perty_scar"');
+						makeCheckbox(pending, '', getKey(pertyScar), custom, updateData, '', ['perty_scar']);
+					break;
+				}
+			}
+			editor.appendChild(pending);
+		}
+		break;
+	case pageEquipment://**************************************************************************************************
+		pending = document.createDocumentFragment()
+		baseElement = makeDiv(pending, 'group');
+		baseElement = makeDiv(baseElement, 'wrap')
+		for (i = 0; i < 6; i++) {
+			if (spoilers || inParty(i)) {
+				if (i === pertisia) baseElement = makeDiv(pending.lastChild, 'wrap')
+				makeSpan(baseElement, 'header gridSpan', 'Weapons: ' + names[i]);
+				for (j = 0; j < (weapon[i].name.length - 1); j++) {
+					if ((weapon[i].name[j][2] & isBlankEntry) === 0) {
+						makeSpan(makeSpan(baseElement, 'colRight note', weapon[i].name[j][0]),'', weapon[i].name[j][3]);
+						makeInput(baseElement, 'smallValue', 'number', getKey(inventoryItems), custom, updateInventory, [0,99], null, [weapon[i].name[j]]);
+					}
+				}
+				if ((i === gilda) && (spoilers || (getInventoryQuantity(weapon[i].name[j][1]) > 0))) { // Only spoiler weapon is Kitty Wand
+					makeSpan(baseElement, 'header gridSpan', 'Weapons: All');
+					makeSpan(makeSpan(baseElement, 'colRight note', weapon[i].name[j][0]),'', weapon[i].name[j][3]);
+					makeInput(baseElement, 'smallValue', 'number', getKey(inventoryItems), custom, updateInventory, [0,99], null, [weapon[i].name[j]]);
+				}
+			}
+		}
+
+		addInventoryType(headgear.name, 'Headgear');
+		addInventoryType(garment.name, 'Garments');
+		addInventoryType(footwear.name, 'Footwear');
+		addInventoryType(accessory.name, 'Accessories');
+
+		editor.appendChild(pending);
+		break;
+	case pageItems://**************************************************************************************************
+		pending = document.createDocumentFragment()
+		addInventoryType(consumable.name, 'Consumables');
+		addInventoryType(keyItem.name, 'Key Items');
+		editor.appendChild(pending);
+		break;
+	case pageAdvanced://**************************************************************************************************
+		clearFilter();
+		pending = makeDiv();
+		makeSpan(pending, 'colRight', 'Filter');
+		makeInput(pending, 'hugeValue', 'text', true, custom, updateFilter);
+		makeSpan(pending, 'gridSpan', 'You can enter multiple values separated by spaces');
+		editor.appendChild(pending);
+
+		pending = makeDiv();
+		pending.id = 'values';
+		for (let i = 0; i < data.length; i++) {
+			if (data[i][0].length > 0) {
+				makeSpan(pending, 'colRight ' + data[i][0], data[i][0]);
+				if (data[i][2]) {
+					switch (data[i][2]) {
+					case hintBool:
+						makeCheckbox(pending, '', i, custom, updateData, '', [data[i][0]]);
+						break;
+					case hintMulti:
+						makeTextarea(pending, '', (data[i][3] > 10 ? 10 : data[i][3]), i, custom, updateData);
+						break;
+					}
+				} else {
+					makeInput(pending, 'hugeValue ', 'text', i, custom, updateData);
+				}
+			}
+		}
+		editor.appendChild(pending);
+	}
+	loadAllValues();
+
+	function addInventoryType(data, header) {
+		wrapCounter = 0;
+		baseElement = makeDiv(pending, 'group');
+		for (i = 0; i < data.length; i++) {
+			if (((wrapCounter%wrapSize) === 0) && !((wrapCounter === 0) && (i !== wrapCounter))) {
+				baseElement = makeDiv(pending.lastChild, 'wrap');
+				if (i === 0) makeSpan(baseElement, 'header gridSpan', header);
+				else         makeSpan(baseElement, 'gridSpan', '&nbsp;');
+			}
+			if (((data[i][2] & isBlankEntry) === 0) && 
+				(spoilers || ((data[i][2] & isSpoiler) === 0) || (getInventoryQuantity(data[i][1]) > 0))) {
+				wrapCounter++
+				makeSpan(makeSpan(baseElement, 'colRight note', data[i][0]),'', data[i][3]);
+				makeInput(baseElement, 'smallValue', 'number', getKey(inventoryItems), custom, updateInventory, [0,99], null, [data[i]]);
+			}
+		}
+	}
+}
+
+/*************************************************************************************************************************************************************
+ * PUT GAME SPECIFIC FUNCTIONS HERE
+ *************************************************************************************************************************************************************/
+function inParty(id) {
+	if (party.join('').match(`${id}`)) return true;
+	else return false;
+}
+
+function toBool(value) {
+	value = value.toLowerCase();
+	if (value === null) value = 'false';
+	return JSON.parse(`{ "value": ${value} }`).value
+}
+function getKey(id, subId) {
+	let position = -1;
+	if (keys[id] && (subId !== undefined) && (keys[id][subId] !== undefined)) position = keys[id][subId];
+	else if ((keys[id] !== undefined) && (subId === undefined)) position = keys[id];
+	return position;
+}
+function setKey(position, id, subId) {
+	if (subId !== undefined) keys[id][subId] = position;
+	else keys[id] = position;
+}
+
+function getValue(position) {
+	if (position >= 0) return data[position][1];
+	else return null;
+}
+function setValue(position, value) { data[position][1] = value; }
+
+function addValue(value, name) {
+	data.push([name, value]);
+	return data.length - 1;
+}
+
+function removeValue(position) {
+	data[position][0]='';
+	data[position][1]='';
+}
+
+function toggleSpoilers(state, target) {
+	switch(state) {
+		case callbackCustomLoad: target.checked = spoilers; break;
+		case callbackCustomSave: spoilers = target.checked; createUI(); break;
+	}
+}
+
+function updateData(state, target) {
+	switch (state) {
+	case callbackCustomLoad:
+		let value = getValue(target.offset);
+		if (value !== null) {
+			if (target.tagName === 'TEXTAREA') {
+				target.value = value.replace(/,/g, '\r\n');
+			}
+			else if (target.tagName === 'SELECT') {
+				target.selectedIndex = target.extraData[0].id.get(value);
+				// Remove spoilers from the selection list at this point only if a possible spoiler item isn't already selected
+				// Care may need to be taken if spoiler entries appear before currently selected entry — seems to work as expected so far
+				if (!spoilers && ((target.extraData[0].name[target.selectedIndex][2] & isSpoiler) === 0)) removeSpoilers(target); 
+			}
+			else if ((target.tagName === 'INPUT') && (target.type === 'checkbox')) {
+				target.checked = toBool(value);
+				target.value = target.checked;
+			}
+			else target.value = value;
+		}
+		break;
+	case callbackCustomSave:
+		setFileDirty(true);
+		// Create value from scratch if doesn't exist
+		// Should only happen for checkboxes
+		if ((target.offset < 0) || (target.offset === undefined)) {
+			target.offset = addValue('False', target.extraData[0])
+			addHint(target.offset);
+			checkKey(target.extraData[0], target.offset);
+		}
+
+		if (target.tagName === 'TEXTAREA') {
+			if (data[target.offset][2] === undefined) addHint(target.offset);
+			setValue(target.offset, target.value.replace(/[\x0A\x0D]+/g, ','));
+		}
+		else if (target.tagName === 'SELECT') {
+			setValue(target.offset, target.value);
+		}
+		else if ((target.tagName === 'INPUT') && (target.type === 'checkbox')) {
+			// If boolean data was removed and readded in the same session remember to restore name to deleted entries
+			// Should only be in this state if we have just checked something we had previously unchecked causing a removal
+			if (data[target.offset][0] === '') data[target.offset][0] = target.extraData[0]
+
+			// Boolean values are generally checked in game using a hasValue() rather than testing the result of a getValue()
+			// Remove them unless we're fairly sure it is checked by getValue()
+			if (target.checked) setValue(target.offset, 'True');
+			else if (target.extraData) removeValue(target.offset); 
+			else setValue(target.offset, 'False');
+
+			target.value = target.checked;
+		}
+		else setValue(target.offset, target.value.toString());
+	}
+	target.setAttribute('value', target.value); // Needed so filter works on text contents
+}
+
+function removeSpoilers(target) {
+	let options = target.querySelectorAll('option');
+	for (let option of options) {
+		if ((Number(option.dataset.extraData) & isSpoiler) > 0) target.removeChild(option);
+	}
+}
+
+function updateRechargeData(state, target) {
+	switch (state) {
+	case callbackCustomLoad:
+		let value = Number(getValue(target.offset)) + 1;
+		target.value = value;
+		break;
+	case callbackCustomSave:
+		setFileDirty(true);
+		setValue(target.offset, (target.value - 1).toString());
+		break;
+	}
+}
+
+function updateMaritteMood(state, target) {
+	switch (state) {
+	case callbackCustomLoad:
+		target.checked = false;
+		target.checked = toBool(getValue(getKey(maritte, partyLocked))) && getValue(getKey(summerstoneMemory));
+		break;
+	case callbackCustomSave:
+		setFileDirty(true);
+		if (getKey(summerstoneMemory) < 0) {
+			setKey(addValue('False', 'summerstone_memory'), summerstoneMemory);
+			addHint(getKey(summerstoneMemory));
+		}
+
+		if (target.checked) {
+			setValue(getKey(maritte, partyLocked),'True');
+			setValue(getKey(summerstoneMemory), 'True');
+		} else {
+			setValue(getKey(maritte, partyLocked), 'False');
+			removeValue(getKey(summerstoneMemory));
+		}
+		break;
+	}
+}
+
+function updateInventory(state, target) {
+	let value = getValue(target.offset);
+	let itemRegExp = new RegExp(`(,?)${target.extraData[0][1]}:(\\d+)(,?)`)
+	let item = value.match(itemRegExp)
+	switch (state) {
+	case callbackCustomLoad:
+		// The only way there shouldn't be an inventory if an incorrect file is loaded
+		if (getKey(inventoryItems) !== -1) {
+			if (item) target.value = item[2];
+			else target.value = 0;
+		}
+		break;
+	case callbackCustomSave:
+		if (getKey(inventoryItems) !== -1) {
+			let quantity = Number(target.value);
+			if (quantity > 0) {
+				if (item) value = value.replace(itemRegExp, `${item[1]}${target.extraData[0][1]}:${quantity}${item[3]}`);
+				else value += `${(value.length !== 0 ? ',' : '')}${target.extraData[0][1]}:${quantity}`;
+			} else if (quantity === 0) {
+				value = value.replace(itemRegExp, item[1] + (item[1].length === 0) ? item[3] : '');
+			}
+			setValue(target.offset, value);
+		}
+		break;
+	}
+}
+
+function getInventoryQuantity(id) {
+	let itemRegExp = new RegExp(`(,?)${id}:(\\d+)(,?)`)
+	let item = getValue(getKey(inventoryItems)).match(itemRegExp);
+	if (item) return Number(item[2]);
+	else return -1;
+}
+
+function updateFilter(state, target) {
+	switch (state) {
+	case callbackCustomSave:
+		let rules = '', searchValue;
+
+		if (!(searchValue = target.value.trim().toLowerCase())) searchValue = '';
+
+		clearFilter();
+
+		if (searchValue.length > 0) {
+			for(let keyword of searchValue.split(' ')) {
+				keyword = keyword.replace('\\', '\\\\');
+				keyword = keyword.replace('"', '\\"');
+				document.styleSheets[1].insertRule(`
+					#editor > div#values > [class*="${keyword}"i] {
+						display: block;
+						& + * { display: block; }
+					}
+				`);
+				document.styleSheets[1].insertRule(`
+					#editor > div#values > span:has( + [value*="${keyword}"i]) {
+						display: block;
+						& + * { display: block;}
+					}
+				`);
+			}
+			document.styleSheets[1].insertRule('#editor > div#values > * { display: none; }');
+		}
+	}
+}
+
+function clearFilter() {
+	while (document.styleSheets[1].cssRules.length > 0) document.styleSheets[1].deleteRule(0);
+}
+
+/*************************************************************************************************************************************************************
+ * GENERAL FUNCTIONS THAT SHOULD BE USABLE AMONG MULTIPLE EDITORS — LEAVE EVEN IF NOT USED IN THIS EDITOR
+ *************************************************************************************************************************************************************/
+function removePrompt(e) { e.target.promptElement.parentNode.removeChild(e.target.promptElement); }
+
+function makeSpan(parentNode, className, innerHTML, extraStyles, extraData) {
+	let result = document.createElement('span');
+	if (className !== undefined) result.className = className;
+	if (innerHTML !== undefined) result.innerHTML = innerHTML;
+	if (extraStyles !== undefined) result.style = extraStyles;
+	if (extraData !== undefined) result.extraData = extraData;
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+function makeDynamicSpan(parentNode, className, innerHTML, offset, dataType, callback, extraStyles, extraData) {
+	let result = makeSpan(null, className, innerHTML, extraStyles, extraData)
+	result.classList.add('dynamic');
+	result.offset = offset;
+	result.dataType = dataType;
+	if (typeof callback === 'function') result._callback = callback;
+	editorFields.push(result);
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+// This always surrounds the button in a <span> as often you want to add additional elements such as a prompt to the button
+function makeButton(parentNode, className, innerHTML, offset, action, promptElement, promptValue, extraData) {
+	let container = document.createDocumentFragment();
+	makeSpan(container, (className !== undefined)?('button ' + className):'button');
+	let result = document.createElement('button');
+	if (innerHTML !== undefined) result.innerHTML = innerHTML;
+	if (offset !== undefined) result.offset = offset;
+	if (typeof action === 'function') result.addEventListener('click', action, false);
+	if (promptElement !== undefined) result.promptElement = promptElement;
+	if (promptValue !== undefined) result.promptValue = promptValue;
+	if (extraData !== undefined) result.extraData = extraData;
+	container.firstChild.appendChild(result);
+	if (parentNode !== null) parentNode.appendChild(container);
+	return container;
+}
+
+function makeSelect(parentNode, className, selectData, offset, dataType, callback, extraData) {
+	let result = document.createElement('select');
+	if (className !== undefined) result.className = className;
+	result.appendChild(selectData.dom.cloneNode(true));
+	result.offset = offset;
+	result.dataType = dataType;
+	result.array = selectData.array;
+	if (typeof callback === 'function') result._callback = callback;
+	if (extraData) result.extraData = extraData;
+	editorFields.push(result);
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+function makeCheckbox(parentNode, className, offset, dataType, callback, value, extraData, disabled, checked) {
+	let result = document.createElement('input');
+	if (className !== undefined) result.className = className;
+	result.type = 'checkbox';
+	result.offset = offset;
+	result.dataType = dataType;
+	if (typeof callback === 'function') result._callback = callback;
+	if (typeof value === 'number') result.value = value;
+	else                           result.value = 1;
+	if (extraData !== undefined) result.extraData = extraData;
+	if (disabled === true) result.disabled = true;
+	if (checked === true) result.checked = true;
+	editorFields.push(result);
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+function makeInput(parentNode, className, type, offset, dataType, callback, limits, modifier, extraData, disabled, decimal) {
+	let result = document.createElement('input');
+	if (className !== undefined) result.className = className;
+	result.type = type;
+	if (type === 'time') result.step = 1;
+	result.offset = offset;
+	result.dataType = dataType;
+	if (typeof callback === 'function') result._callback = callback;
+	if (Array.isArray(limits)) {
+		if (type === 'number') {
+			result.min = limits[0];
+			result.max = limits[1];
+		}
+		else {
+			result.minLength = limits[0];
+			result.maxLength = limits[1];
+			result.pattern = '.{'+limits[0]+','+limits[1]+'}';
+		}
+	}
+	if (Array.isArray(modifier)) {
+		result.modifyMode = modifier[0];
+		result.modifier = modifier[1];
+	}
+	if (extraData !== undefined) result.extraData = extraData;
+	if (disabled === true) result.disabled = true;
+	if (decimal !== undefined) result.step = decimal;
+	editorFields.push(result);
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+function makeTextarea(parentNode, className, rows, offset, dataType, callback, limits, modifier, extraData, disabled) {
+	let result = document.createElement('textarea');
+	if (className !== undefined) result.className = className;
+	result.rows = rows;
+	result.offset = offset;
+	result.dataType = dataType;
+	if (typeof callback === 'function') result._callback = callback;
+	if (Array.isArray(limits)) {
+		result.minLength = limits[0];
+		result.maxLength = limits[1];
+	}
+	if (Array.isArray(modifier)) {
+		result.modifyMode = modifier[0];
+		result.modifier = modifier[1];
+	}
+	if (extraData !== undefined) result.extraData = extraData;
+	if (disabled === true) result.disabled = true;
+	editorFields.push(result);
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+function makeDiv(parentNode, className) {
+	if (parentNode === undefined) parentNode = null;
+	let result = document.createElement('div');
+	if (className !== undefined) result.className = className;
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
+function addPageButton(text, disabled) {
+	let result = document.createElement('button');
+	result.type = 'button';
+	result.value = pageButtons.length;
+	result.innerText = text;
+	if (disabled) result.disabled = disabled;
+	global.appendChild(result);
+	pageButtons.push(result);
+	return Number(result.value);
+}
+function testDateInput() {
+	let test = document.createElement('input');
+	test.type = 'date';
+	if (test.type = 'date') {
+		test.type = 'time'
+		if (test.type = 'time') { return true; }
+		else { return false; }
+	}
+	else { return false; }
+}
+
+function loadAllValues() {
+	for (let field of editorFields) loadValue(field);
+}
+
+function loadValue(target) {
+	let rawValue;
+	switch (target.dataType) {
+	case custom:
+		target._callback(callbackCustomLoad, target); break;
+	case uint8:
+		target.value = rawData.getUint8(target.offset); break;
+	case int8:
+		target.value = rawData.getInt8(target.offset); break;
+	case uint16:
+		target.value = rawData.getUint16(target.offset, defaultEndianness); break;
+	case int16:
+		target.value = rawData.getInt16(target.offset, defaultEndianness); break;
+	case uint32:
+		target.value = rawData.getUint32(target.offset, defaultEndianness); break;
+	case int32:
+		target.value = rawData.getInt32(target.offset, defaultEndianness); break;
+	case uint64:
+		target.value = rawData.getBigUint64(target.offset, defaultEndianness); break;
+	case int64:
+		target.value = rawData.getBigInt64(target.offset, defaultEndianness); break;
+	case float32:
+		target.value = rawData.getFloat32(target.offset, defaultEndianness).toFixed(1); break;
+	case arrayIndexed8:
+		target.selectedIndex = target.array[rawData.getUint8(target.offset)]; break;
+	case arrayIndexed16:
+		target.selectedIndex = target.array[rawData.getUint16(target.offset, defaultEndianness)]; break;
+	case arrayIndexed32:
+		target.selectedIndex = target.array[rawData.getUint32(target.offset, defaultEndianness)]; break;
+	case arrayStringIndexed:
+		rawValue = new Uint8Array(rawData.buffer, target.offset, target.extraData[0])
+		target.selectedIndex = target.extraData[1].id.get(decodeUTF8.decode(rawValue).split('\u0000')[0]);
+		break;
+	case checkbox8:
+		rawValue = rawData.getUint8(target.offset);
+		if (rawValue == target.value) target.checked = true;
+		else                          target.checked = false;
+		break;
+	case text:
+		rawValue = new Uint8Array(rawData.buffer, target.offset, target.extraData[0]);
+		target.value = decodeUTF8.decode(rawValue).split('\u0000')[0];
+		break;
+	case bitmask:
+		rawValue = rawData.getUint8(target.offset + Math.floor(target.value/8))
+		if ((rawValue & (2**(target.value%8))) == (2**(target.value%8))) target.checked = true;
+		else                                                             target.checked = false;
+		break;
+	case debugToString:
+		rawValue = Array.from(new Uint8Array(rawData.buffer, target.offset, target.extraData));
+		for (let i = 0; i < rawValue.length; i++) rawValue[i] = padString(rawValue[i].toString(16), '00').toUpperCase();
+		target.innerText = rawValue.join(' ');
+		break;
+	}
+	// Does not currently support 64 bit values due to having to use BigInt
+	if (target.modifyMode) {
+		switch (target.modifyMode) {
+			case modAdd: target.value = target.value + target.modifier; break;
+			case modSubtract: target.value = target.value - target.modifier; break;
+			case modMultiply: target.value = target.value * target.modifier; break;
+			case modDivide: target.value = target.value / target.modifier; break;
+		}
+	}
+	if ((target._callback) && (target.dataType != custom)) target._callback(callbackAfterLoad, target);
+}
+
+function valueChanged(e) { saveValue(e.target); }
+
+function saveValue(target) {
+	let rawValue;
+	// Load existing value if newly entered value invalid
+	if (target.checkValidity()) {
+		// Empty strings are not considered invalid
+		// Check for .value too.
+		if ((target.offset !== undefined) && (target.dataType !== undefined) && (!target.required || target.value)) {
+			if ((target._callback) && (target.dataType != custom)) target._callback(callbackBeforeSave, target);
+
+			// Does not currently support 64 bit values due to having to use BigInt
+			// Value is reloaded from element in switch below in those cases
+			if (target.modifyMode) {
+				switch (target.modifyMode) {
+					// Constants refer to loading, reverse action when saving
+					case modAdd: rawValue = target.value - target.modifier; break;
+					case modSubtract: rawValue = target.value + target.modifier; break;
+					case modMultiply: rawValue = target.value / target.modifier; break;
+					case modDivide: rawValue = target.value * target.modifier; break;
+				}
+			}
+			else {
+				rawValue = target.value;
+			}
+
+			switch (target.dataType) {
+			case custom:
+				target._callback(callbackCustomSave, target); break;
+			case uint8:
+				rawData.setUint8(target.offset, rawValue); break;
+			case int8:
+				rawData.setInt8(target.offset, rawValue); break;
+			case uint16:
+				rawData.setUint16(target.offset, rawValue, defaultEndianness); break;
+			case int16:
+				rawData.setInt16(target.offset, rawValue, defaultEndianness); break;
+			case uint32:
+				rawData.setUint32(target.offset, rawValue, defaultEndianness); break;
+			case int32:
+				rawData.setInt32(target.offset, rawValue, defaultEndianness); break;
+			case uint64:
+				rawValue = BigInt(target.value);
+				rawData.setBigUint64(target.offset, rawValue, defaultEndianness);
+				break;
+			case int64:
+				rawValue = BigInt(target.value);
+				rawData.setBigInt64(target.offset, rawValue, defaultEndianness);
+				break;
+			case float32:
+				rawData.setFloat32(target.offset, rawValue, defaultEndianness); break;
+			case arrayIndexed8:
+				rawData.setUint8(target.offset, Number(rawValue)); break;
+			case arrayIndexed16:
+				rawData.setUint16(target.offset, Number(rawValue), defaultEndianness); break;
+			case arrayIndexed32:
+				rawData.setUint32(target.offset, Number(rawValue), defaultEndianness); break;
+			case arrayStringIndexed:
+				if (typeof target.extraData[2] === 'string') encodeUTF8.encodeInto(padString(rawValue, target.extraData[2], true), new Uint8Array(rawData.buffer, target.offset, target.extraData[0]));
+				else                                         encodeUTF8.encodeInto(rawValue + '\u0000', new Uint8Array(rawData.buffer, target.offset, target.extraData[0]));
+				break;
+			case checkbox8:
+				if (target.checked) rawData.setUint8(target.offset, target.value);
+				else                rawData.setUint8(target.offset, 0);
+				break;
+			case text:
+				if (typeof target.extraData[1] === 'string') encodeUTF8.encodeInto(padString(rawValue, target.extraData[1], true), new Uint8Array(rawData.buffer, target.offset, target.extraData[0]));
+				else                                         encodeUTF8.encodeInto(rawValue + '\u0000', new Uint8Array(rawData.buffer, target.offset, target.extraData[0]));
+				break;
+			case bitmask:
+				// Set up mask
+				rawValue = 0xFF - (2**(target.value%8));
+				// Passthrough all bits except the one we're changing
+				rawValue = rawData.getUint8(target.offset + Math.floor(target.value/8)) & rawValue;
+				if (target.checked) rawValue += (2**(target.value%8))
+				rawData.setUint8(target.offset + Math.floor(target.value/8), rawValue);
+				break;
+			}
+		}
+		if ((target._callback) && (target.dataType != custom)) target._callback(callbackAfterSave, target);
+	}
+}
+
+function buildSelectData(data) {
+	let i, j, element, entry;
+	let output = {};
+
+	output.dom = document.createDocumentFragment();
+	output.array = [];
+
+	j = 0;
+	for (i = 0; entry = data[i]; i++) {
+		if ((entry[2] & isHeader) > 0) {
+			element = document.createElement('optgroup');
+			element.label = entry[0];
+			output.dom.appendChild(element);
+		}
+		else if (debug || ((entry[2] & isDebug) === 0)) {
+			element = document.createElement('option');
+			if (typeof entry[1] === 'number') {
+				element.innerHTML = ((debug)?padString(Number(entry[1]).toString(16).toUpperCase(),'00') + ': ':'') + entry[0] + ((typeof entry[2] === 'string')?' [' + entry[2] + ']':'');
+			} else {
+				element.innerHTML = ((debug)?entry[1] + ': ':'') + entry[0] + ((typeof entry[2] === 'string')?' [' + entry[2] + ']':'');
+			}
+			element.value = entry[1];
+			if (entry[2]) element.setAttribute('data-extra-data', entry[2]);
+			if (output.dom.lastChild &&
+				output.dom.lastChild.tagName.match(/optgroup/i)) output.dom.lastChild.appendChild(element);
+			else                                                 output.dom.appendChild(element);
+			output.array[entry[1]] = j;
+			j++;
+		}
+	}
+	return output;
+}
+
+function prepareStringIndexedArray(stringArray, sourceData) {
+	let indexCount = 0;
+	stringArray.select = buildSelectData(sourceData);
+	stringArray.id = new Map();
+	stringArray.name = []
+	for (let entry of sourceData) {
+		if ((entry[2] & isHeader) === 0) { // Exclude header entries;
+			stringArray.id.set(entry[1], indexCount)
+			stringArray.name.push(entry)
+			indexCount++;
+		}
+	}
+}
+
+function loadData() {
+	names = ["Maritte", "Petronella", "Rook", "Pertisia", "Ima", "Gilda"];
+
+	weapon = []
+	weapon[maritte] = {}
+	prepareStringIndexedArray(weapon[maritte], [
+		["[none]", "", isBlankEntry],
+		["Pocket Knife", "PocketKnife", 0, "Pow: 1<br><br>Buy: 5<br>Sell: 3<br><br><b>Sources:</b><br>Starting Equipment<br>Shop"],
+		["Fire Poker", "FirePoker", 0, "Pow: 2<br><br>Buy: 10<br>Sell: 6<br><br><b>Sources:</b><br>Shop<br>Treasure Chest"],
+		["Glowstick", "Glowstick", 0, "Pow: 4<br><br>Buy: 75<br>Sell: 45<br><br><b>Sources:</b><br>Shop"],
+		["First Light", "FirstLight", 0, "Pow: 7<br><br>Buy: 100<br>Sell: 60<br><br><b>Sources:</b><br>Shop"],
+		["Old Troll", "OldTroll", 0, "Pow: 10<br><br>Buy: 400<br>Sell: 240<br><br><b>Sources:</b><br>Shop"],
+		["Glowtorch", "Glowtorch", 0, "Pow: 14<br><br>Buy: 800<br>Sell: 480<br><br><b>Sources:</b><br>Shop"],
+		["The Forge", "TheForge", 0, "Pow: 18<br><br>Buy: 1000<br>Sell: 600<br><br><b>Sources:</b><br>Shop"],
+		["Winter's End", "WintersEnd", 0, "Pow: 25<br><br><b>Sources:</b><br>Battle Reward"],
+		["Kitty Wand", "KittyWand", isSpoiler, "Pow: 25<br><br><b>Sources:</b><br>Treasure Chest"],
+	]);
+	weapon[petronella] = {}
+	prepareStringIndexedArray(weapon[petronella], [
+		["[none]", "", isBlankEntry],
+		["Tree Knot", "TreeKnot", 0, "Pow: 2<br><br>Buy: 10<br>Sell: 6<br><br><b>Sources:</b><br>Starting Equipment<br>Shop"],
+		["Bee Song", "BeeSong", 0, "Pow: 4<br><br>Buy: 75<br>Sell: 45<br><br><b>Sources:</b><br>Shop"],
+		["Helping Hand", "HelpingHand", 0, "Pow: 7<br><br>Buy: 100<br>Sell: 60<br><br><b>Sources:</b><br>Shop"],
+		["Faery Spade", "FaerySpade", 0, "Pow: 10<br><br>Buy: 400<br>Sell: 240<br><br><b>Sources:</b><br>Shop"],
+		["Green Thumb", "GreenThumb", 0, "Pow: 14<br><br>Buy: 800<br>Sell: 480<br><br><b>Sources:</b><br>Shop"],
+		["Smell of Spice", "SmellOfSpice", 0, "Pow: 18<br><br>Buy: 1000<br>Sell: 600<br><br><b>Sources:</b><br>Shop"],
+		["Elder Rose", "ElderRose", 0, "Pow: 25<br><br><b>Sources:</b><br>Battle Reward"],
+		["Kitty Wand", "KittyWand", isSpoiler, "Pow: 25<br><br><b>Sources:</b><br>Treasure Chest"],
+	]);
+	weapon[rook] = {}
+	prepareStringIndexedArray(weapon[rook], [
+		["[none]", "", isBlankEntry],
+		["Fountain Pen", "FountainPen", 0, "Pow: 4<br><br>Buy: 75<br>Sell: 45<br><br><b>Sources:</b><br>Starting Equipment<br>Shop"],
+		["Page-Turner", "PageTurner", 0, "Pow: 7<br><br>Buy: 100<br>Sell: 60<br><br><b>Sources:</b><br>Shop"],
+		["Mage's Compass", "Traveller", 0, "Pow: 10<br><br>Buy: 400<br>Sell: 240<br><br><b>Sources:</b><br>Shop"],
+		["Riddle Solver", "Perception", 0, "Pow: 14<br><br>Buy: 800<br>Sell: 480<br><br><b>Sources:</b><br>Shop"],
+		["Writer's Block", "WritersBlock", 0, "Pow: 18<br><br>Buy: 1000<br>Sell: 600<br><br><b>Sources:</b><br>Shop"],
+		["The Immortal", "TheImmortal", 0, "Pow: 25<br><br><b>Sources:</b><br>Battle Reward"],
+		["Kitty Wand", "KittyWand", isSpoiler, "Pow: 25<br><br><b>Sources:</b><br>Treasure Chest"],
+	]);
+	weapon[pertisia] = {}
+	prepareStringIndexedArray(weapon[pertisia], [
+		["[none]", "", isBlankEntry],
+		["Cold Shoulder", "ColdShoulder", 0, "Pow: 7<br><br>Buy: 100<br>Sell: 60<br><br><b>Sources:</b><br>Starting Equipment<br>Shop"],
+		["The Fair One", "TheFairOne", 0, "Pow: 10<br><br>Buy: 400<br>Sell: 240<br><br><b>Sources:</b><br>Shop"],
+		["Keepsake", "Keepsake", 0, "Pow: 14<br><br>Buy: 800<br>Sell: 480<br><br><b>Sources:</b><br>Shop"],
+		["The Only Child", "TheOnlyChild", 0, "Pow: 18<br><br>Buy: 1000<br>Sell: 600<br><br><b>Sources:</b><br>Shop"],
+		["First Snow", "FirstSnow", 0, "Pow: 25<br><br><b>Sources:</b><br>Battle Reward"],
+		["Kitty Wand", "KittyWand", isSpoiler, "Pow: 25<br><br><b>Sources:</b><br>Treasure Chest"],
+	]);
+	weapon[ima] = {}
+	prepareStringIndexedArray(weapon[ima], [
+		["[none]", "", isBlankEntry],
+		["Unicorn Hair", "UnicornHair", 0, "Pow: 10<br><br>Buy: 400<br>Sell: 240<br><br><b>Sources:</b><br>Starting Equipment<br>Shop"],
+		["Milky Way", "MilkyWay", 0, "Pow: 14<br><br>Buy: 800<br>Sell: 480<br><br><b>Sources:</b><br>Shop"],
+		["Art Is Hard", "ArtIsHard", 0, "Pow: 18<br><br>Buy: 1000<br>Sell: 600<br><br><b>Sources:</b><br>Shop"],
+		["Paint the Future", "PaintTheFuture", 0, "Pow: 25<br><br><b>Sources:</b><br>Battle Reward"],
+		["Kitty Wand", "KittyWand", isSpoiler, "Pow: 25<br><br><b>Sources:</b><br>Treasure Chest"],
+	]);
+	weapon[gilda] = {}
+	prepareStringIndexedArray(weapon[gilda], [
+		["[none]", "", isBlankEntry],
+		["Glitter Baton", "GlitterBaton", 0, "Pow: 10<br><br>Buy: 400<br>Sell: 240<br><br><b>Sources:</b><br>Starting Equipment<br>Shop"],
+		["Sunshine Scepter", "SunshineScepter", 0, "Pow: 14<br><br>Buy: 800<br>Sell: 480<br><br><b>Sources:</b><br>Shop"],
+		["Wonder Wand", "WandOfWonder", 0, "Pow: 18<br><br>Buy: 1000<br>Sell: 600<br><br><b>Sources:</b><br>Shop"],
+		["Star of the Show", "StarOfTheShow", 0, "Pow: 25<br><br><b>Sources:</b><br>Battle Reward"],
+		["Kitty Wand", "KittyWand", isSpoiler, "Pow: 25<br><br><b>Sources:</b><br>Treasure Chest"],
+	]);
+
+	headgear = {};
+	prepareStringIndexedArray(headgear, [
+		["[none]", "", isBlankEntry],
+		["Royal Snug?", "FakeRoyalSnug", 0, "<b>Can be upgraded to Winterlast</b><br><br>Pow: -1<br>Def: 1<br>Spd: -1<br><br>Sell: 1<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Warm Snug", "WarmingCap", 0, "Def: 4<br>Spd: -2<br><br>Buy: 15<br>Sell: 9<br><br><b>Sources:</b><br>Shop<br>Overworld Interaction"],
+		["Bandana", "Bandana", 0, "Def: 3<br><br>Buy: 15<br>Sell: 9<br><br><b>Sources:</b><br>Starting Equipment<br>Shop"],
+		["Blue Snug", "BlueSnug", 0, "Def: 5<br><br>Buy: 50<br>Sell: 30<br><br><b>Sources:</b><br>Starting Equipment<br>Shop"],
+		["The Grassmage", "TheGrassmage", 0, "Pow: 1<br>Def: 4<br><br>Buy: 60<br>Sell: 36<br><br><b>Sources:</b><br>Shop<br>Overworld Interaction"],
+		["Good Sport", "GoodSport", 0, "Def: 4<br>Spd: 1<br><br>Buy: 60<br>Sell: 36<br><br><b>Sources:</b><br>Shop<br>Treasure Chest"],
+		["Woolymuffs", "Woolymuffs", 0, "Pow: -1<br>Def: 5<br>Spd: 2<br><br>Sell: 36<br><br><b>Sources:</b><br>Battle Reward"],
+		["Sunstopper", "Sunstopper", 0, "Def: 8<br><br>Buy: 80<br>Sell: 48<br><br><b>Sources:</b><br>Shop<br>Treasure Chest"],
+		["Seawater", "Seawater", 0, "Pow: 1<br>Def: 6<br><br>Buy: 90<br>Sell: 54<br><br><b>Sources:</b><br>Shop<br>Battle Reward"],
+		["Lemontie", "Lemontie", 0, "Def: 6<br>Spd: 2<br><br>Buy: 90<br>Sell: 54<br><br><b>Sources:</b><br>Shop<br>Treasure Chest"],
+		["Royal Snug", "RoyalSnug", 0, "Def: 11<br><br>Buy: 100<br>Sell: 60<br><br><b>Sources:</b><br>Starting Equipment<br>Shop<br><i>The Rewarder</i>"],
+		["Pine Muffs", "PineMuffs", 0, "Pow: 1<br>Def: 9<br>Spd: 1<br><br>Sell: 72<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Thunderbrim", "Thunderbrim", 0, "Pow: 1<br>Def: 10<br><br>Sell: 72<br><br><b>Sources:</b><br>Starting Equipment<br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Sleep Tight", "SleepTight", 0, "Def: 13<br>Spd: -2<br><br>Buy: 120<br>Sell: 72<br><br><b>Sources:</b><br>Shop<br>Treasure Chest"],
+		["Blue Bunny", "BlueBunny", 0, "Def: 10<br>Spd: 2<br><br>Sell: 72<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Emberhat", "Emberhat", 0, "Pow: 3<br>Def: 11<br><br>Buy: 300<br>Sell: 180<br><br><b>Sources:</b><br>Shop"],
+		["The Tinker", "TheTinker", 0, "Def: 14<br><br>Buy: 300<br>Sell: 180<br><br><b>Sources:</b><br>Shop"],
+		["Party Face", "PartyFace", 0, "Pow: 1<br>Def: 14<br>Spd: -1<br><br>Sell: 180<br><br><b>Sources:</b><br>Treasure Chest"],
+		["The Sootygold", "TheSootygold", 0, "Pow: 1<br>Def: 12<br>Spd: 3<br><br>Buy: 300<br>Sell: 180<br><br><b>Sources:</b><br>Shop<br>Overworld Interaction"],
+		["The Sunset", "TheSunset", 0, "Def: 13<br>Spd: 5<br><br>Sell: 180<br><br><b>Sources:</b><br>Treasure Chest"],
+		["The Heartbeat", "TheHeartbeat", 0, "HP: 5<br>Def: 12<br>Spd: 3<br><br>Buy: 300<br>Sell: 180<br><br><b>Sources:</b><br>Shop"],
+		["The Clear Sky", "TheClearSky", 0, "Pow: 2<br>Def: 16<br>Spd: 2<br><br>Buy: 700<br>Sell: 420<br><br><b>Sources:</b><br>Shop"],
+		["Head Hugger", "HeadHugger", 0, "Def: 19<br>Spd: 1<br><br>Buy: 700<br>Sell: 420<br><br><b>Sources:</b><br>Shop"],
+		["Vertigold", "Vertigold", 0, "Pow: 1<br>Def: 17<br>Spd: 4<br><br>Buy: 700<br>Sell: 420<br><br><b>Sources:</b><br>Shop"],
+		["The False King", "TheFalseKing", 0, "Pow: 4<br>Def: 14<br>Spd: -1<br><br>Sell: 480<br><br><b>Sources:</b><br>Treasure Chest"],
+		["The Tiny Ghost", "TheTinyGhost", 0, "Pow: 2<br>Def: 16<br>Spd: 4<br><br>Sell: 480<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Nimble Brim", "NimbleBrim", 0, "Pow: -1<br>Def: 16<br>Spd: 8<br><br>Sell: 480<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Fae Fillet", "FaeFillet", 0, "Pow: 1<br>Def: 18<br>Spd: 1<br><br>Buy: 900<br>Sell: 540<br><br><b>Sources:</b><br>Shop"],
+		["The Trickster", "TheTrickster", 0, "Def: 20<br><br>Buy: 900<br>Sell: 540<br><br><b>Sources:</b><br>Shop"],
+		["Attack Box", "AttackBox", 0, "HP: -20<br>Pow: 8<br>Def: 18<br><br>Sell: 600<br><br><b>Sources:</b><br>Treasure Chest"],
+		["The Fiend", "TheFiend", 0, "Pow: 3<br>Def: 18<br><br>Sell: 600<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Garden Party", "GardenParty", 0, "Def: 18<br>Spd: 4<br><br>Sell: 600<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Snuggledrake", "Snuggledrake", 0, "Def: 23<br><br>Buy: 1000<br>Sell: 600<br><br><b>Sources:</b><br>Shop"],
+		["The Dreamer", "TheDreamer", 0, "Pow: 2<br>Def: 21<br>Spd: 2<br><br>Sell: 720<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Spring Bloom", "SpringBloom", 0, "Def: 20<br>Spd: 6<br><br>Buy: 1200<br>Sell: 720<br><br><b>Sources:</b><br>Shop"],
+		["The Romantic", "TheRomantic", 0, "Pow: 4<br>Def: 23<br><br>Sell: 720<br><br><b>Sources:</b><br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Winterlast", "Winterlast", 0, "Pow: 3<br>Def: 22<br>Spd: 4<br><br>Sell: 840<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Floppy Hat", "FloppyHat", 0, "Pow: 1<br>Def: 6<br>Spd: 1<br><br><b>Sources:</b><br>Battle Reward"],
+		["Kitty Ears", "KittyEars", isSpoiler, "Def: 23<br>Spd: 5<br><br><b>Sources:</b><br>Treasure Chest"],
+	]);
+
+	garment = {};
+	prepareStringIndexedArray(garment, [
+		["[none]", "", isBlankEntry],
+		["Travel Jacket", "TravelJacket", 0, "Def: 4<br><br>Buy: 20<br>Sell: 12<br><br><b>Sources:</b><br>Starting Equipment<br>Shop"],
+		["Red Knit Sweater", "RedKnitSweater", 0, "Def: 5<br>Spd: -1<br><br>Buy: 20<br>Sell: 12<br><br><b>Sources:</b><br>Starting Equipment<br>Shop"],
+		["Overalls", "Overalls", 0, "Def: 6<br><br>Buy: 60<br>Sell: 36<br><br><b>Sources:</b><br>Shop<br>Treasure Chest"],
+		["Formals", "Formals", 0, "Pow: 1<br>Def: 5<br><br>Buy: 70<br>Sell: 42<br><br><b>Sources:</b><br>Starting Equipment<br>Shop"],
+		["The Cobalt", "Cobalt", 0, "Def: 5<br>Spd: 2<br><br>Buy: 70<br>Sell: 42<br><br><b>Sources:</b><br>Shop<br>Treasure Chest"],
+		["Comfy Blues", "ComfyBlues", 0, "Def: 9<br><br>Buy: 100<br>Sell: 60<br><br><b>Sources:</b><br>Starting Equipment<br>Shop"],
+		["Cargo Jacket", "CargoJacket", 0, "Pow: 2<br>Def: 7<br><br>Buy: 120<br>Sell: 72<br><br><b>Sources:</b><br>Shop<br>Treasure Chest"],
+		["Thistleguard", "Thistleguard", 0, "Def: 7<br>Spd: 3<br><br>Buy: 120<br>Sell: 72<br><br><b>Sources:</b><br>Shop<br>Treasure Chest"],
+		["Mr Serious", "MrSerious", 0, "Def: 12<br><br>Buy: 120<br>Sell: 72<br><br><b>Sources:</b><br>Shop<br>Treasure Chest"],
+		["The Honey Bee", "TheHoneyBee", 0, "Pow: 1<br>Def: 10<br><br>Buy: 140<br>Sell: 84<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br><i>The Rewarder</i>"],
+		["The Cutie Pie", "TheCutiePie", isSpoiler, "Def: 10<br>Spd: 2<br><br>Sell: 84<br><br><b>Sources:</b><br>Not available in normal gameplay"],
+		["South Swing", "SouthSwing", 0, "Def: 11<br>Spd: 1<br><br>Buy: 140<br>Sell: 84<br><br><b>Sources:</b><br>Starting Equipment<br>Shop<br><i>The Rewarder</i><br>Battle Reward"],
+		["Coven Reds", "CovenReds", 0, "Pow: 2<br>Def: 14<br><br>Buy: 500<br>Sell: 300<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br><i>The Rewarder</i>"],
+		["The Noblest", "TheNoblest", 0, "Def: 16<br><br>Buy: 500<br>Sell: 300<br><br><b>Sources:</b><br>Shop"],
+		["Coven Greens", "CovenGreens", 0, "Def: 14<br>Spd: 3<br><br>Buy: 500<br>Sell: 300<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Criss-Cross", "CrissCross", 0, "Pow: 1<br>Def: 15<br>Spd: 1<br><br>Buy: 500<br>Sell: 300<br><br><b>Sources:</b><br>Shop"],
+		["The Cutest", "TheCutest", 0, "Pow: 1<br>Def: 13<br>Spd: 4<br><br>Sell: 300<br><br><b>Sources:</b><br>Starting Equipment<br><i>The Rewarder</i>"],
+		["Honeywool", "Honeywool", 0, "Pow: 1<br>Def: 15<br>Spd: 2<br><br>Sell: 300<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Finest Fit", "FinestFit", 0, "Pow: 2<br>Def: 17<br>Spd: -2<br><br>Buy: 1000<br>Sell: 600<br><br><b>Sources:</b><br>Shop"],
+		["The Silky Spirit", "TheSilkySpirit", 0, "Def: 19<br><br>Buy: 1000<br>Sell: 600<br><br><b>Sources:</b><br>Shop"],
+		["The Battle Witch", "TheBattleWitch", 0, "Pow: 3<br>Def: 16<br><br>Sell: 720<br><br><b>Sources:</b><br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Alchemail", "Alchemail", 0, "Pow: 1<br>Def: 16<br>Spd: 2<br><br>Sell: 720<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Dungarees", "Dungarees", 0, "Pow: 1<br>Def: 18<br>Spd: 1<br><br>Buy: 1200<br>Sell: 720<br><br><b>Sources:</b><br>Shop"],
+		["The True Diamond", "TheTrueDiamond", 0, "Def: 21<br><br>Buy: 1200<br>Sell: 720<br><br><b>Sources:</b><br>Shop"],
+		["The Early Autumn", "TheEarlyAutumn", 0, "Def: 16<br>Spd: 6<br><br>Sell: 720<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Pow Tank", "PowerTank", 0, "Pow: 4<br>Def: 18<br><br>Sell: 840<br><br><b>Sources:</b><br>Treasure Chest"],
+		["The Bumble Bee", "TheBumbleBee", 0, "Def: 18<br>Spd: 5<br><br>Sell: 840<br><br><b>Sources:</b><br>Treasure Chest"],
+		["The Wise One", "TheWiseOne", 0, "Def: 24<br><br>Buy: 1400<br>Sell: 840<br><br><b>Sources:</b><br>Shop"],
+		["The Harvester", "TheHarvester", 0, "Pow: 4<br>Def: 21<br><br>Buy: 1500<br>Sell: 900<br><br><b>Sources:</b><br>Shop"],
+		["The True Heart", "TheTrueHeart", 0, "Def: 21<br>Spd: 8<br><br>Buy: 1500<br>Sell: 900<br><br><b>Sources:</b><br>Shop"],
+		["The Victorious", "TheVictorious", 0, "Pow: 5<br>Def: 24<br><br>Sell: 1200<br><br><b>Sources:</b><br>Treasure Chest"],
+		["The Wanderlust", "TheWanderlust", 0, "Pow: 3<br>Def: 24<br>Spd: 3<br><br>Sell: 1200<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Total Comfort", "TotalComfort", 0, "Def: 28<br>Spd: 2<br><br>Sell: 1200<br><br><b>Sources:</b><br>Treasure Chest"],
+		["The Spectacle", "TheSpectacle", 0, "Def: 25<br>Spd: 10<br><br>Sell: 1200<br><br><b>Sources:</b><br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Floppy Cloak", "FloppyCloak", 0, "Pow: 1<br>Def: 9<br><br><b>Sources:</b><br>Battle Reward"],
+		["Kitty Suit", "KittySuit", isSpoiler, "Def: 24<br>Spd: 8<br><br><b>Sources:</b><br>Treasure Chest"],
+	]);
+
+	footwear = {};
+	prepareStringIndexedArray(footwear, [
+		["[none]", "", isBlankEntry],
+		["Leather Shoes", "LeatherShoes", 0, "Def: 1<br><br>Buy: 15<br>Sell: 9<br><br><b>Sources:</b><br>Starting Equipment<br>Shop"],
+		["Old Reliables", "OldReliables", 0, "Spd: 1<br><br>Buy: 15<br>Sell: 9<br><br><b>Sources:</b><br>Starting Equipment<br>Shop"],
+		["Loafers", "Loafers", 0, "Spd: 2<br><br>Buy: 40<br>Sell: 24<br><br><b>Sources:</b><br>Starting Equipment<br>Shop<br>Treasure Chest"],
+		["Blue Canoes", "BlueCanoes", 0, "Def: 1<br>Spd: 2<br><br>Buy: 70<br>Sell: 42<br><br><b>Sources:</b><br>Shop"],
+		["Dusties", "Dusties", 0, "Spd: 1<br>Mov: 1<br><br>Sell: 48<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Twinkle Toes", "TwinkleToes", 0, "Spd: 4<br><br>Sell: 48<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Mean Greens", "MeanGreens", 0, "Spd: 7<br><br>Buy: 100<br>Sell: 60<br><br><b>Sources:</b><br>Starting Equipment<br>Shop<br>Treasure Chest"],
+		["Mudskippers", "Mudskippers", 0, "Spd: 3<br>Mov: 1<br><br>Sell: 72<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Hardy Ones", "HardyOnes", 0, "Def: 1<br>Spd: 5<br><br>Buy: 120<br>Sell: 72<br><br><b>Sources:</b><br>Shop<br>Overworld Interaction<br><i>The Rewarder</i>"],
+		["Wanderers", "Wanderers", 0, "Spd: 5<br>Mov: 1<br><br>Sell: 90<br><br><b>Sources:</b><br>Starting Equipment<br>Treasure Chest"],
+		["Steel Toes", "SteelToes", 0, "Def: 2<br>Spd: 8<br><br>Buy: 300<br>Sell: 180<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Cyclamens", "Cyclamens", 0, "Pow: 1<br>Def: 2<br>Spd: 8<br><br>Sell: 240<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Rosy Soles", "RosySoles", 0, "Pow: 1<br>Spd: 10<br><br>Sell: 240<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Diamond Cutters", "DiamondCutters", 0, "Spd: 8<br>Mov: 1<br><br>Sell: 300<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Ceruleans", "Ceruleans", 0, "Spd: 14<br><br>Buy: 700<br>Sell: 420<br><br><b>Sources:</b><br>Shop"],
+		["Medallions", "Medallions", 0, "Pow: 1<br>Def: 1<br>Spd: 10<br><br>Sell: 480<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Sunsets", "Sunsets", 0, "Spd: 18<br><br>Buy: 900<br>Sell: 540<br><br><b>Sources:</b><br>Shop"],
+		["Trekkers", "Trekkers", 0, "Spd: 11<br>Mov: 1<br><br>Sell: 600<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Volcanoes", "Volcanoes", 0, "Pow: 2<br>Spd: 16<br><br>Sell: 600<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Avians", "Avians", 0, "Spd: 28<br><br>Buy: 1000<br>Sell: 600<br><br><b>Sources:</b><br>Shop"],
+		["Travelers", "Travelers", 0, "Spd: 14<br>Mov: 1<br><br>Sell: 720<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Striders", "Striders", 0, "Spd: 20<br>Mov: 1<br><br>Buy: 1200<br>Sell: 720<br><br><b>Sources:</b><br>Shop"],
+		["Blackstars", "Blackstars", 0, "Pow: 2<br>Spd: 24<br>Mov: 1<br><br>Sell: 960<br><br><b>Sources:</b><br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Kitty Paws", "KittyPaws", isSpoiler, "Spd: 25<br>Mov: 1<br><br><b>Sources:</b><br>Treasure Chest"],
+	]);
+
+	accessory = {};
+	prepareStringIndexedArray(accessory, [
+		["[none]", "", isBlankEntry],
+		["Bark Strip", "BarkStrip", 0, "<b>Can be upgraded to Haunted Hoop</b><br><br>Sell: 1<br><br><b>Sources:</b><br>Starting Equipment<br>Overworld Interaction"],
+		["Red Earrings", "RedEarrings", 0, "Pow: 1<br>Spd: -1<br><br>Sell: 6<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Little Locket", "LittleLocket", 0, "Def: 1<br>Spd: -1<br><br>Sell: 6<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Fast Locket", "FastLocket", 0, "Spd: 2<br><br>Sell: 6<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Heart Brooch", "HeartBrooch", 0, "HP: 5<br><br>Sell: 6<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Flashy Tie", "FlashyTie", 0, "Pow: 1<br>Def: -1<br>Spd: 1<br><br>Sell: 60<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Glass Hairpin", "GlassHairpin", 0, "Def: 1<br>Spd: 1<br><br>Sell: 60<br><br><b>Sources:</b><br>Battle Reward"],
+		["Heavy Earrings", "HeavyEarrings", 0, "Def: 2<br><br>Sell: 60<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Pink Hairband", "PinkHairband", 0, "Spd: 3<br><br>Sell: 60<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Blue Hairband", "BlueHairband", 0, "Def: 3<br><br>Sell: 60<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Love Locket", "LoveLocket", 0, "HP: 10<br><br>Sell: 60<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Cinderbelt", "Cinderbelt", 0, "Pow: 1<br>Spd: 6<br><br>Sell: 90<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Flareband", "Flareband", 0, "Pow: 3<br>Def: -1<br><br>Sell: 120<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Ruby Ring", "RubyRing", 0, "Pow: 2<br>Spd: 1<br><br>Sell: 120<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Lapis Ring", "LapisRing", 0, "Def: 2<br>Spd: 2<br><br>Sell: 120<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Peri Ring", "PeriRing", 0, "Pow: 1<br>Spd: 4<br><br>Sell: 120<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Quartz Earrings", "QuartzEarrings", 0, "Pow: -1<br>Def: 4<br>Spd: 4<br><br>Sell: 120<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Rose Ring", "RoseRing", 0, "HP: 8<br>Spd: 2<br><br>Sell: 120<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Summer Sash", "SummerSash", 0, "Pow: 5<br>Def: 2<br>Spd: -1<br><br>Sell: 600<br><br><b>Sources:</b><br>Battle Reward"],
+		["Autumn Sash", "AutumnSash", 0, "Pow: 3<br>Def: 4<br>Spd: 0<br><br>Sell: 600<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Spring Sash", "SpringSash", 0, "Def: 1<br>Spd: 8<br><br>Sell: 600<br><br><b>Sources:</b><br><i>The Rewarder</i>"],
+		["Winter Sash", "WinterSash", 0, "Def: 5<br>Spd: 7<br><br>Sell: 600<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Prize Poppies", "PrizePoppies", 0, "Pow: 6<br>Spd: -1<br><br>Sell: 1200<br><br><b>Sources:</b><br><i>The Rewarder</i>"],
+		["Cursed Tie", "CursedTie", 0, "Pow: 15<br>Def: -10<br><br>Sell: 1200<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Pollen Tie", "PollenTie", 0, "Spd: 10<br><br>Sell: 1200<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Prize Shoots", "PrizeShoots", 0, "Pow: 1<br>Def: 4<br>Spd: 5<br><br>Sell: 1200<br><br><b>Sources:</b><br>Battle Reward"],
+		["Kitty Tail", "KittyTail", isSpoiler, "Pow: 2<br>Def: 2<br>Spd: 10<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Haunted Hoop", "HauntedHoop", 0, "Pow: +8%<br>Def: +8%<br>Spd: +8%<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Ghost Pendant", "GhostPendant", 0, "HP: -20%<br>Pow: +10%<br>Def: +10%<br>Spd: +20%<br><br>Sell: 180<br><br><b>Sources:</b><br>Treasure Chest<br>Overworld Interaction<br><i>The Rewarder</i>"],
+		["Silver Ring", "SilverRing", 0, "<b>Slightly increase gold dropped by enemies</b><br><br>Sell: 6<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Gold Ring", "GoldRing", 0, "<b>Increase gold dropped by enemies</b><br><br>Sell: 240<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Rising Pin", "RisingPin", 0, "<b>Restores 25% HP when KO'd (once per battle)<br>Cost: 2 Gems</b><br><br><b>Sources:</b><br>Gem Shop"],
+		["Phoenix Charm", "PhoenixCharm", 0, "<b>Restores 100% HP when KO'd (once per battle)<br>Upgrade: Rising Pin</b><br><br><b>Sources:</b><br>Gem Shop"],
+		["Sweetie Pin", "SweetiePin", 0, "<b>Restores HP to adjacent allies in critical condition<br>Cost: 3 Gems</b><br><br><b>Sources:</b><br>Gem Shop"],
+		["Cutie Pin", "CutieCharm", 0, "<b>Restores more HP to nearby allies in critical condition<br>Upgrade: Sweetie Pin</b><br><br><b>Sources:</b><br>Gem Shop"],
+		["Bone Locket", "BoneLocket", 0, "<b>Damages enemies adjacent to you<br>Cost: 3 Gems</b><br><br><b>Sources:</b><br>Gem Shop"],
+		["Skull Charm", "SkullCharm", 0, "<b>Damages enemies surrounding you<br>Upgrade: Bone Locket</b><br><br><b>Sources:</b><br>Gem Shop"],
+		["Soft Socks", "SoftSocks", 0, "<b>Raises your Mov by 1 and destroys traps<br>Cost: 2 Gems</b><br><br>Mov: 1<br><br><b>Sources:</b><br>Gem Shop"],
+		["Superb Socks", "SuperbSocks", 0, "<b>Raises your Mov by 2 and destroys traps<br>Upgrade: Soft Socks</b><br><br>Mov: 2<br><br><b>Sources:</b><br>Gem Shop"],
+		["Star Pin", "StarPin", 0, "<b>Raises Pow every 3 turns<br>Cost: 2 Gems</b><br><br><b>Sources:</b><br>Gem Shop"],
+		["Twinkle Charm", "TwinkleCharm", 0, "<b>Raises Pow and Spd every 3 turns<br>Upgrade: Star Pin</b><br><br><b>Sources:</b><br>Gem Shop"],
+		["Pow Glove", "PowerGlove", 0, "<b>Boosts Pow when HP is low [Thresholds 50%, 25%]<br>Cost: 2 Gems</b><br><br><b>Sources:</b><br>Gem Shop"],
+		["Fury Mitts", "FuryMitts", 0, "<b>Boosts Pow a lot when HP is low [Thresholds 50%, 25%]<br>Upgrade: Pow Glove</b><br><br><b>Sources:</b><br>Gem Shop"],
+		["Bolt Pin", "BoltPin", 0, "<b>Boosts Spd when HP is low [Thresholds 50%, 25%]<br>Cost: 3 Gems</b><br><br><b>Sources:</b><br>Gem Shop"],
+		["Thunder Charm", "ThunderCharm", 0, "<b>Boosts Spd a lot when HP is low [Thresholds 50%, 25%]<br>Upgrade: Bolt Pin</b><br><br><b>Sources:</b><br>Gem Shop"],
+		["Soft Scarf", "CozyScarf", 0, "<b>Use items at long distances [+2 Range]<br>Cost: 2 Gems</b><br><br><b>Sources:</b><br>Gem Shop"],
+		["Floral Scarf", "FloralScarf", 0, "<b>Use items at long distances & 50% chance for freebies! [+3 Range]<br>Upgrade: Soft Scarf</b><br><br><b>Sources:</b><br>Gem Shop"],
+		["Clan Insignia", "ClanInsignia", 0, "<b>Marks you as a member of an ancient secret society</b><br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Frog Scarf", "FrogScarf", isSpoiler, "<b>Does not display properly</b><br><br>Pow: 2<br>Def: 2<br><br>Sell: 90<br><br><b>Sources:</b><br>Not available in normal gameplay"],
+		["Swift Choker", "Swiftchoker", isSpoiler, "<b>Does not display properly</b><br><br>Pow: 2<br>Spd: 4<br><br>Sell: 180<br><br><b>Sources:</b><br>Not available in normal gameplay"],
+		["Azure Neck", "Azureneck", isSpoiler, "<b>Does not display properly</b><br><br>Def: 5<br>Spd: 2<br><br>Sell: 180<br><br><b>Sources:</b><br>Not available in normal gameplay"],
+		["Silver Twins", "SilverTwins", isSpoiler, "<b>Does not display properly</b><br><br>Def: 8<br><br>Sell: 210<br><br><b>Sources:</b><br>Not available in normal gameplay"],
+		["Gold Twins", "GoldTwins", isSpoiler, "<b>Does not display properly</b><br><br>Pow: 4<br>Def: 4<br><br>Sell: 240<br><br><b>Sources:</b><br>Not available in normal gameplay"],
+	]);
+
+	consumable = {};
+	prepareStringIndexedArray(consumable, [
+		["Small Mushroom", "ItemSmallMushroom", 0, "<b>Restores 4 HP to a party member<br>Can be used anywhere</b><br><br>Buy: 4<br>Sell: 2<br><br><b>Sources:</b><br>Starting Equipment<br>Shop<br><i>The Rewarder</i><br>Battle Reward"],
+		["Mini Melon", "ItemMiniMelon", 0, "<b>Restores 10 HP to a party member<br>Can be used anywhere</b><br><br>Buy: 10<br>Sell: 6<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br><i>The Rewarder</i><br>Battle Reward"],
+		["Red Mushroom", "ItemRedMushroom", 0, "<b>Restores 12 HP to a party member<br>Can be used anywhere</b><br><br>Buy: 12<br>Sell: 7<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br><i>The Rewarder</i><br>Battle Reward"],
+		["Gold Blossom", "ItemGoldBlossom", 0, "<b>Restores 15 HP to a party member<br>Cannot be used in battle</b><br><br>Buy: 14<br>Sell: 8<br><br><b>Sources:</b><br>Shop<br><i>The Rewarder</i><br>Battle Reward"],
+		["Blue Blossom", "ItemBlueBlossom", 0, "<b>Restores 15 HP to a party member<br>Can be used anywhere</b><br><br>Buy: 16<br>Sell: 9<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br><i>The Rewarder</i><br>Battle Reward"],
+		["Dew Plum", "ItemDewPlum", 0, "<b>Restores 25 HP to a party member<br>Cannot be used in battle</b><br><br>Buy: 30<br>Sell: 18<br><br><b>Sources:</b><br>Shop<br><i>The Rewarder</i><br>Battle Reward"],
+		["Honeycrisp", "ItemHoneycrisp", 0, "<b>Restores 20 HP to a party member<br>Can be used anywhere</b><br><br>Buy: 30<br>Sell: 18<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br><i>The Rewarder</i><br>Battle Reward"],
+		["Crimson Cure", "ItemCrimsonCure", 0, "<b>Restores 40 HP to a party member<br>Can be used anywhere</b><br><br>Buy: 100<br>Sell: 60<br><br><b>Sources:</b><br>Shop"],
+		["Soothing Draught", "ItemSoothingDraught", 0, "<b>Restores 50 HP to a party member<br>Cannot be used in battle</b><br><br>Buy: 100<br>Sell: 60<br><br><b>Sources:</b><br>Shop"],
+		["Blush Crunch", "ItemBlushCrunch", isSpoiler, "<b>Restores 50 HP to a party member<br>Can be used anywhere</b><br><br>Sell: 120<br><br><b>Sources:</b><br>Not available in normal gameplay"],
+		["Fruity Shroom", "ItemFruityShroom", 0, "<b>Restores 50 HP to yourself<br>Can only be used in battle</b><br><br>Sell: 60<br><br><b>Sources:</b><br>Overworld Interaction<br><i>The Rewarder</i>"],
+		["Pink Seeds", "ItemPinkSeeds", 0, "<b>Restores 10 HP to a distant party member<br>Can be used anywhere</b><br><br>Sell: 12<br><br><b>Sources:</b><br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Pink Pods", "ItemPinkPods", 0, "<b>Restores 20 HP to a distant party member<br>Can only be used in battle</b><br><br>Sell: 36<br><br><b>Sources:</b><br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Plump Seeds", "ItemPlumpSeeds", isSpoiler, "<b>Restores 25 HP to a distant party member<br>Can only be used in battle</b><br><br>Sell: 36<br><br><b>Sources:</b><br>Not available in normal gameplay"],
+		["Sweet Sprout", "ItemSweetSprout", 0, "<b>Restores 10 HP to a KO'd party member<br>Can only be used in battle</b><br><br>Sell: 9<br><br><b>Sources:</b><br>Treasure Chest<br>Overworld Interaction<br>Battle Reward"],
+		["Super Sprout", "ItemSuperSprout", 0, "<b>Restores 15 HP to a KO'd party member<br>Can only be used in battle</b><br><br>Sell: 15<br><br><b>Sources:</b><br>Treasure Chest<br>Overworld Interaction"],
+		["Comeback Candy", "ItemComebackCandy", 0, "<b>Restores 20 HP to a KO'd party member<br>Can only be used in battle</b><br><br>Buy: 40<br>Sell: 24<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br>Overworld Interaction<br><i>The Rewarder</i>"],
+		["Spring Seed", "ItemSpringSeed", 0, "<b>Restores 30 HP to a KO'd party member<br>Can only be used in battle</b><br><br>Buy: 150<br>Sell: 90<br><br><b>Sources:</b><br>Shop<br>Treasure Chest"],
+		["Pick Me Up", "ItemPickMeUp", 0, "<b>Restores 40 HP to a KO'd party member<br>Can only be used in battle</b><br><br>Buy: 150<br>Sell: 90<br><br><b>Sources:</b><br>Shop"],
+		["Longfellows", "ItemLongfellows", 0, "<b>Restores entire party's HP by 30.<br>Can only be used in battle</b><br><br>Sell: 600<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Blue Tower", "ItemBlueTower", 0, "<b>Restores 12 HP and boosts Def by 3 for 3 turns<br>Can only be used in battle</b><br><br>Sell: 18<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Curry Stew", "ItemCurryStew", 0, "<b>Restores 15 HP and boosts Pow by 6 for 3 turns<br>Can only be used in battle</b><br><br>Buy: 120<br>Sell: 72<br><br><b>Sources:</b><br>Shop<br>Treasure Chest"],
+		["Veggie Stew", "ItemVeggieStew", 0, "<b>Restores 15 HP and boosts Def by 5 for 3 turns<br>Can only be used in battle</b><br><br>Buy: 120<br>Sell: 72<br><br><b>Sources:</b><br>Shop<br><i>The Rewarder</i>"],
+		["Sweet Cake", "ItemSweetCake", 0, "<b>Restores 15 HP and boosts Spd by 5 for 3 turns<br>Can only be used in battle</b><br><br>Sell: 30<br><br><b>Sources:</b><br><i>The Rewarder</i><br>Battle Reward"],
+		["Star Cookie", "ItemStarCookie", 0, "<b>Restores 20 HP and boosts Spd by 8 for 3 turns<br>Can only be used in battle</b><br><br>Sell: 60<br><br><b>Sources:</b><br>Treasure Chest<br>Overworld Interaction<br><i>The Rewarder</i><br>Battle Reward"],
+		["Rose Cordial", "ItemRoseCordial", 0, "<b>Restores 20 HP and regenerates by 10 for 3 turns<br>Can only be used in battle</b><br><br>Buy: 120<br>Sell: 72<br><br><b>Sources:</b><br>Shop<br><i>The Rewarder</i>"],
+		["Special Soda", "ItemSpecialSoda", 0, "<b>Restores 40 HP and boosts Def by 8 for 3 turns<br>Can only be used in battle</b><br><br>Buy: 150<br>Sell: 90<br><br><b>Sources:</b><br>Shop"],
+		["Energy Drink", "ItemEnergyDrink", 0, "<b>Restores 40 HP and boosts Spd by 20 for 3 turns<br>Can only be used in battle</b><br><br>Buy: 150<br>Sell: 90<br><br><b>Sources:</b><br>Shop"],
+		["Queerberries", "ItemQueerberries", 0, "<b>Restores 20 HP and boosts Pow and Def by 20% for 2 turns<br>Can only be used in battle</b><br><br>Sell: 180<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Custard Cake", "ItemCustardCake", 0, "<b>Restores 20 HP and boosts Pow and Spd for 2 turns (Pow +3, Spd +5)<br>Can only be used in battle</b><br><br>Sell: 60<br><br><b>Sources:</b><br>Treasure Chest<br>Overworld Interaction<br><i>The Rewarder</i>"],
+		["Cocoa Cake", "ItemCocoaCake", 0, "<b>Restores 30 HP and boosts Pow and Spd for 2 turns (Pow +3, Spd +5)<br>Can only be used in battle</b><br><br>Sell: 60<br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Spice Leaf", "ItemSpiceLeaf", 0, "<b>Restores 10 HP and cures status effects<br>Can only be used in battle</b><br><br>Buy: 25<br>Sell: 15<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br><i>The Rewarder</i><br>Battle Reward"],
+		["Perenniate", "ItemPerenniate", 0, "<b>Restores 15 HP and cures status effects<br>Can only be used in battle</b><br><br>Buy: 30<br>Sell: 18<br><br><b>Sources:</b><br>Shop"],
+		["Mint Shroom", "ItemMintShroom", 0, "<b>Restores 20 HP and cures status effects<br>Can only be used in battle</b><br><br>Sell: 30<br><br><b>Sources:</b><br>Treasure Chest<br>Overworld Interaction<br><i>The Rewarder</i>"],
+		["Minty Medicine", "ItemMintyMedicine", 0, "<b>Restores 40 HP and cures status effects<br>Can only be used in battle</b><br><br>Buy: 120<br>Sell: 72<br><br><b>Sources:</b><br>Shop"],
+		["Hot Berry", "ItemHotBerry", 0, "<b>Boosts Pow by 2 for 3 turns<br>Can only be used in battle</b><br><br>Buy: 15<br>Sell: 9<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br><i>The Rewarder</i><br>Battle Reward"],
+		["Thorn Berries", "ItemThornBerries", 0, "<b>Boosts Pow by 3 for 3 turns<br>Can only be used in battle</b><br><br>Buy: 25<br>Sell: 15<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Pow Cherry", "ItemPowerCherry", 0, "<b>Boosts Pow by 5 for 3 turns<br>Can only be used in battle</b><br><br>Buy: 40<br>Sell: 24<br><br><b>Sources:</b><br>Shop<br>Overworld Interaction<br><i>The Rewarder</i>"],
+		["Pow Flower", "ItemPowerFlower", 0, "<b>Boosts Pow by 10 for 2 turns<br>Can only be used in battle</b><br><br>Sell: 60<br><br><b>Sources:</b><br>Treasure Chest"],
+		["Demon Eye", "ItemDemonEye", 0, "<b>Boosts Pow by 10 for 5 turns<br>Can only be used in battle</b><br><br>Buy: 666<br>Sell: 399<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Rock Seed", "ItemRockSeed", 0, "<b>Boosts Def by 3 for 2 turns<br>Can only be used in battle</b><br><br>Buy: 15<br>Sell: 9<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br><i>The Rewarder</i><br>Battle Reward"],
+		["Hard Nut", "ItemHardNut", 0, "<b>Boosts Def by 4 for 3 turns<br>Can only be used in battle</b><br><br>Buy: 25<br>Sell: 15<br><br><b>Sources:</b><br>Shop<br><i>The Rewarder</i>"],
+		["Cave Acorn", "ItemCaveAcorn", 0, "<b>Boosts Def by 6 for 3 turns<br>Can only be used in battle</b><br><br>Buy: 40<br>Sell: 24<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Rock Nut", "ItemRockNut", 0, "<b>Boosts Def by 10 for 2 turns<br>Can only be used in battle</b><br><br>Sell: 45<br><br><b>Sources:</b><br>Battle Reward"],
+		["Swift Leaves", "ItemSwiftLeaves", isSpoiler, "<b>Boosts Spd by 5 for 3 turns<br>Can only be used in battle</b><br><br>Sell: 30<br><br><b>Sources:</b><br>Not available in normal gameplay"],
+		["Ghost Cookie", "ItemGhostCookie", 0, "<b>Boosts Pow, Def, and Spd by 10% for 2 turns<br>Can only be used in battle</b><br><br>Buy: 333<br>Sell: 199<br><br><b>Sources:</b><br>Shop<br><i>The Rewarder</i>"],
+		["Specter Ale", "ItemSpecterAle", 0, "<b>Damages you by 15 and boosts Pow by 10 for 3 turns<br>Can only be used in battle</b><br><br>Sell: 120<br><br><b>Sources:</b><br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Moldy Shroom", "ItemMoldyShroom", 0, "<b>Lowers Def by 3 for 3 turns<br>Can only be used in battle</b><br><br>Sell: 1<br><br><b>Sources:</b><br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Rancid Fruit", "ItemRancidFruit", 0, "<b>Lowers Def by 4 for 3 turns<br>Can only be used in battle</b><br><br>Sell: 1<br><br><b>Sources:</b><br>Treasure Chest<br>Overworld Interaction<br><i>The Rewarder</i>"],
+		["Toxic Shroom", "ItemToxicShroom", 0, "<b>Lowers Def by 8 for 2 turns<br>Can only be used in battle</b><br><br>Sell: 1<br><br><b>Sources:</b><br>Overworld Interaction<br><i>The Rewarder</i>"],
+		["Nexus Quill", "ItemNexusQuill", 0, "<b>Reduces target's HP by 25%<br>Can only be used in battle</b><br><br>Sell: 1<br><br><b>Sources:</b><br><i>The Rewarder</i>"],
+		["Frenzy Flower", "ItemFrenzyFlower", 0, "<b>Boosts entire party's Pow by 5 for 3 turns<br>Can only be used in battle</b><br><br>Sell: 60<br><br><b>Sources:</b><br>Overworld Interaction<br><i>The Rewarder</i><br>Battle Reward"],
+		["Gold Shroom", "ItemGoldShroom", 0, "<b>Boosts entire party's Spd by 10 for 3 turns<br>Can only be used in battle</b><br><br>Sell: 60<br><br><b>Sources:</b><br>Treasure Chest<br><i>The Rewarder</i><br>Battle Reward"],
+		["Stink Stew", "ItemStinkStew", 0, "<b>Reduces Def of all enemies by 3 for 3 turns<br>Can only be used in battle</b><br><br>Sell: 1<br><br><b>Sources:</b><br>Treasure Chest<br>Overworld Interaction"],
+		["Phoenix Egg", "ItemPhoenixEgg", 0, "<b>Restores 50 HP to all party members, conscious or not<br>Can only be used in battle</b><br><br>Buy: 3000<br>Sell: 1800<br><br><b>Sources:</b><br>Shop"],
+		["Leviathan Egg", "ItemLeviathanEgg", 0, "<b>Cures party's status and boosts Def by 10 for 3 turns<br>Can only be used in battle</b><br><br>Buy: 1000<br>Sell: 600<br><br><b>Sources:</b><br>Shop<br>Treasure Chest"],
+		["Dragon Egg", "ItemDragonEgg", 0, "<b>Boosts entire party's Pow by 8 for 3 turns<br>Can only be used in battle</b><br><br>Buy: 2000<br>Sell: 1200<br><br><b>Sources:</b><br>Shop"],
+		["Book of Love", "ItemBookOfLove", 0, "<b>Restores entire party's HP by 20<br>Can only be used in battle</b><br><br>Sell: 600<br><br><b>Sources:</b><br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Book of Fire", "ItemBookOfFire", 0, "<b>Deals 15 damage to all enemies<br>Can only be used in battle</b><br><br>Sell: 600<br><br><b>Sources:</b><br>Treasure Chest<br>Overworld Interaction"],
+		["Book of Safety", "ItemBookOfSafety", 0, "<b>Destroys all enemy traps<br>Can only be used in battle</b><br><br>Sell: 240<br><br><b>Sources:</b><br>Treasure Chest<br>Battle Reward"],
+		["Sadio's Sipper", "ItemCibilsSipper", 0, "<b>Restores 20 HP to a party member<br>Can be used anywhere</b><br><br>Buy: 20<br>Sell: 12<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Sadio's Red", "ItemCibilsRed", 0, "<b>Restores 30 HP to a party member<br>Can be used anywhere</b><br><br>Buy: 80<br>Sell: 48<br><br><b>Sources:</b><br>Shop<br><i>The Rewarder</i><br>Battle Reward"],
+		["Sadio's Blue", "ItemCibilsBlue", 0, "<b>Restores 40 HP to a party member<br>Cannot be used in battle</b><br><br>Buy: 80<br>Sell: 48<br><br><b>Sources:</b><br>Shop<br><i>The Rewarder</i>"],
+		["Sadio's Green", "ItemCibilsGreen", 0, "<b>Restores 30 HP and cures status effects<br>Can only be used in battle</b><br><br>Buy: 80<br>Sell: 48<br><br><b>Sources:</b><br>Shop<br><i>The Rewarder</i><br>Battle Reward"],
+		["Sadio's Sparkly", "ItemCibilsSparkly", 0, "<b>Restores 30 HP to a KO'd party member<br>Can only be used in battle</b><br><br>Buy: 120<br>Sell: 72<br><br><b>Sources:</b><br>Shop<br><i>The Rewarder</i>"],
+		["Sadio's Fizzy", "ItemCibilsFizzy", 0, "<b>Restores 30 HP and boosts Def by 5 for 3 turns<br>Can only be used in battle</b><br><br>Buy: 120<br>Sell: 72<br><br><b>Sources:</b><br>Shop"],
+		["Sadio's Citrus", "ItemCibilsCitrus", 0, "<b>Restores 30 HP and boosts Spd by 10 for 3 turns<br>Can only be used in battle</b><br><br>Buy: 120<br>Sell: 72<br><br><b>Sources:</b><br>Shop"],
+		["Sadio's Sweetest", "ItemCibilsSweetest", 0, "<b>Restores 15 HP and regenerates by 5 for 3 turns<br>Can only be used in battle</b><br><br>Buy: 100<br>Sell: 60<br><br><b>Sources:</b><br>Shop<br>Treasure Chest<br><i>The Rewarder</i>"],
+		["Black Bomb", "ItemBlackBomb", 0, "<b>Throw to explode for 8 points of area damage<br>Can only be used in battle</b><br><br>Sell: 12<br><br><b>Sources:</b><br>Treasure Chest<br><i>The Rewarder</i><br>Battle Reward"],
+		["Big Bomb", "ItemBigBomb", 0, "<b>Throw to explode for 15 points of area damage<br>Can only be used in battle</b><br><br>Buy: 500<br>Sell: 300<br><br><b>Sources:</b><br>Shop<br><i>The Rewarder</i>"],
+		["Big Bomb MK II", "ItemBigBombMKII", 0, "<b>Throw to explode for 25 points of area damage<br>Can only be used in battle</b><br><br>Buy: 1000<br>Sell: 600<br><br><b>Sources:</b><br>Shop<br>Treasure Chest"],
+		["Sweet Punch", "ItemSweetPunch", isSpoiler, "<b>Does not display properly<br>Restores 100 HP to a party member<br>Can be used anywhere</b><br><br>Sell: 72<br><br><b>Sources:</b><br>Not available in normal gameplay"],
+	]);
+
+	keyItem = {}
+	prepareStringIndexedArray(keyItem, [
+		["Alchemica Principia", "ItemAlchemicaPrincipia", 0, "<b>An ancient tome full of alchemical recipes. Who might use this?</b><br><br><b>Sources:</b><br>Treasure Chest"],
+		["Common Coin", "ItemCommonCoin", 0, "<b>A collector's item of no use, but worth a small amount of gold</b><br><br>Sell: 12<br><br><b>Sources:</b><br>Treasure Chest<br>Overworld Interaction<br><i>The Rewarder</i><br>Battle Reward"],
+		["Rare Coin", "ItemRareCoin", 0, "<b>A collector's item of no use, but worth its weight in gold</b><br><br>Sell: 120<br><br><b>Sources:</b><br>Treasure Chest<br>Overworld Interaction<br><i>The Rewarder</i><br>Battle Reward"],
+		["Beauty Token", "ItemBeautyToken", 0, "<b>A collector's item of no use, but worth its weight in gold</b><br><br>Sell: 300<br><br><b>Sources:</b><br>Overworld Interaction<br><i>The Rewarder</i><br>Battle Reward"],
+		["Prize Medal", "ItemPrizeMedal", 0, "<b>A collector's item of no use, but worth a nice sum of gold</b><br><br>Sell: 600<br><br><b>Sources:</b><br>Treasure Chest<br>Overworld Interaction<br><i>The Rewarder</i><br>Battle Reward"],
+		["Ghost Coin", "ItemGhostCoin", 0, "<b>A collector's item of no use, but worth a nice sum of gold</b><br><br>Sell: 1200<br><br><b>Sources:</b><br>Overworld Interaction<br><i>The Rewarder</i><br>Battle Reward"],
+		["Mythic Coin", "ItemMythicCoin", 0, "<b>A collector's item of no use, but worth a nice sum of gold</b><br><br>Sell: 2400<br><br><b>Sources:</b><br>Overworld Interaction<br>Battle Reward"],
+		["Rare Gem", "ItemRareGem", 0, "<b>A gem master will trade wonderful things for it</b><br><br><b>Sources:</b><br>Treasure Chest<br>Overworld Interaction<br>Battle Reward"],
+		["Shiny Gem", "ItemShinyGem", 0, "<b>A gem master will upgrade wonderful things with it</b><br><br><b>Sources:</b><br>Treasure Chest<br>Overworld Interaction"],
+		["Sparkly Gem", "ItemSparklyGem", 0, "<b>A gem master would trade an arm and a leg for one of these</b><br><br><b>Sources:</b><br>Treasure Chest<br>Overworld Interaction"],
+		["Prism Heart", "ItemPrismHeart", 0, "<b>A mysterious heart-shaped prism created by Safina</b><br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Empty Vial", "ItemEmptyVial", 0, "<b>An empty glass vial</b><br><br><b>Sources:</b><br>Treasure Chest"],
+		["Glowing Vial", "ItemGlowingVial", 0, "<b>A glass vial filled with a glowing substance</b><br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Firewood", "ItemFirewood", 0, "<b>A few pieces of this will make a good fire</b><br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Float Stone", "ItemFloatStone", 0, "<b>A smooth stone, buoyant but heavy</b><br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Smooth Stone", "ItemStoneWeight", isSpoiler, "<b>A perfectly smooth stone, clearly hand-made</b><br><br><b>Sources:</b><br>Not available in normal gameplay"],
+		["Cell Key", "ItemCellKey", 0, "<b>A prison cell key</b><br><br><b>Sources:</b><br>Treasure Chest"],
+		["Dark Cell Key", "ItemDarkCellKey", 0, "<b>A dark, cold prison cell key</b><br><br><b>Sources:</b><br>Treasure Chest"],
+		["Gardens Key", "ItemGardensKey", 0, "<b>The key to Ikenfell's gardens</b><br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Ghost Heart", "ItemGhostHeart", 0, "<b>Remnant of a ghost returned to the spirit world</b><br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Roost Key", "ItemRoostKey", 0, "<b>Key to the Roost tower, located in the main schoolyard</b><br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Slimy Key", "ItemSlimyKey", 0, "<b>A key covered in sticky slime</b><br><br><b>Sources:</b><br>Treasure Chest"],
+		["Spirit Rune", "ItemSpiritRune1", 0, "<b>One of the four magic runes sealing a door in the Spirit Oval</b><br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Spirit Rune", "ItemSpiritRune2", 0, "<b>One of the four magic runes sealing a door in the Spirit Oval</b><br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Spirit Rune", "ItemSpiritRune3", 0, "<b>One of the four magic runes sealing a door in the Spirit Oval</b><br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Spirit Rune", "ItemSpiritRune4", 0, "<b>One of the four magic runes sealing a door in the Spirit Oval</b><br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Stacks Access", "ItemStacksAccess", 0, "<b>The words to enter the library Stacks</b><br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Storage Password", "ItemStoragePassword", 0, "<b>A tablet that generates passwords for a magic lock</b><br><br><b>Sources:</b><br>Treasure Chest"],
+		["Tiny Ghost Key", "ItemTinyGhostKey", 0, "<b>An adorable little ghost key</b><br><br><b>Sources:</b><br>Treasure Chest<br>Overworld Interaction"],
+		["Toolshed Key", "ItemToolshedKey", 0, "<b>Key to the shed outside the Stoc 'n' Barrol</b><br><br><b>Sources:</b><br>Treasure Chest"],
+		["Twilight Star", "ItemTwilightStar", 0, "<b>A small star shaped stone that shines brightly</b><br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Sadio's Saltiest", "ItemCibilsSaltiest", 0, "<b>A potent, bubbling white potion to ward off spirits</b><br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Echo Heart", "ItemSpecterHeart", isSpoiler, "<b>???</b><br><br><b>Sources:</b><br>Overworld Interaction"],
+		["Mended Heart", "ItemMendedHeart", isSpoiler, "<b>You are loved</b><br><br><b>Sources:</b><br>Battle Reward"],
+		["The Allkey", "ItemTheAllkey", isSpoiler, "<b>Did this key just... blink?</b><br><br><b>Sources:</b><br>Treasure Chest"],
+		["Lamp Letter", "ItemLampLetter", isSpoiler, "<b>Does not display properly</b><br><br><b>Sources:</b><br>Not available in normal gameplay"],
+	]);
+}
+
+// Pad a number as a string by adding characters then slicing from the left
+// Will not crop a number that is already longer than the padding length
+function padNumber(number, padString) {
+	if (number >= (10 ** padString.length)) {
+		return number.toString();
+	}
+	else if (number < 0) {
+		return '-' + (padString + (number * -1)).slice((padString.length * -1))
+	}
+	else {
+		return (padString + number).slice(((padString.length) * -1))
+	}
+}
+// Same but for strings so does not even consider numerical properties
+function padString(text, padString, padRight) {
+	if (padRight) return (text + padString).slice(0, (padString.length-1))
+	else          return (padString + text).slice((padString.length * -1))
+}
+// If you want to sort an array of numbers
+function compareNumbers(a, b) {
+  return a - b;
+}
+		</script>
+	</body>
+</html>
