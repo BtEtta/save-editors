@@ -19,7 +19,8 @@ Supports editing saves from the Windows port of Final Fantasy XIII
 * Individual character stats  
 * Inventory editing for all inventories (Items, Weapons, Accessories, Components, and Key Items)  
 * Datalog completion including enemy intel
-* Supports both encrypted saves, and saves decrypted using an external tool (the game will only load encrypted saves).
+* Supports both encrypted saves, and saves decrypted using an external tool (the game will only load encrypted saves).  
+
 This editor uses code derived from https://github.com/Surihix/WhiteCryptTool to handle file encryption.
 
 ## Hyrule Warriors: Age of Calamity
@@ -42,6 +43,7 @@ This editor uses code derived from https://github.com/Surihix/WhiteCryptTool to 
 * Full editing of the inventories, including side content such as capsule toys.  
 * Full editing of your available moves, and their levels.  
 * Full editing of arcade machine high scores. Which will trigger the correct cutscenes when certain thresholds have been met.  
+
 In theory these editors should also work for the original Dreamcast releases provided you can handle the VMU checksums and encapsulation. This is untested.
 
 ## Trials of Mana/Seiken Densetsu 3
@@ -49,6 +51,7 @@ In theory these editors should also work for the original Dreamcast releases pro
 This is the oldest of the editors I have made and lacks some of the polish of later editors.  
 * Allows for full inventory editing & full editing of stats for your three characters (although several of those stats are recalculated by the game in various circumstances)  
 * Name editing should work for the English 2018 re-release, the 2000 Neill Corlett fan translation, and the original Japanese release.  
+
 Labels for items and other in-game text should also match for the two English translations but would need someone capable of reading and inputting Japanese for the labels to be correct for that version.
 
 ## Notes
