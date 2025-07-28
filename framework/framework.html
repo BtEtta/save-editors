@@ -28,6 +28,10 @@ header,
 	&:not(#page, #global) { padding: 5px; }
 	&:not(#page) { border: 1px solid #AAA; }
 }
+header,
+#global,
+#editor > div { background-color: #333; }
+
 #log { margin-left: 20px; }
 
 /********* EDITOR LAYOUT *********/
@@ -54,6 +58,8 @@ header,
 
 /* Defer spacing to element margins */
 .tight-spacing { gap: 0 !important; }
+/* align-items: start looks better for checkboxes + labels which is what this is intended for */
+#editor div.tight-spacing:has(input[type="checkbox"]) { align-items: start; }
 
 #selector {
 	justify-content: left;
@@ -66,22 +72,30 @@ header,
 
 #editor > div {
 	margin: 0 5px 5px 0;
-	&.wrap { margin: 0 -1px -1px 0; }
 	padding: 8px;
 	border: 1px solid #AAA;
 }
 
+#editor > div,
+#editor > div.group > div {
+	&.wrap {
+		margin: 0 -1px -1px 0;
+		border-right: 1px solid #AAA;
+	}
+}
+
 /* Assume two columns as the default grid */
 /* Adding more classes each time you need more columns seems jank but it's the neatest way to line up headers with fields */
-#editor div:not(.group) {
+#editor > div:not(.group),
+#editor > div.group > div {
 	display: grid;
-	grid-template-columns: repeat(2, auto);
 	align-items: center;
 	align-content: start;
 	gap: 6px 6px;
 	flex: none;
 }
 #editor div.gridOne { grid-template-columns: repeat(1, auto); }
+#editor div:not([class*="grid"]) { grid-template-columns: repeat(2, auto); }
 #editor div.gridThree { grid-template-columns: repeat(3, auto); }
 #editor div.gridFour { grid-template-columns: repeat(4, auto); }
 #editor div.gridFive { grid-template-columns: repeat(5, auto); }
@@ -95,7 +109,11 @@ header,
 /* Establish containing block if needed */
 #editor div:has(> .header + .header) { position: relative; }
 
-#editor > div.group { column-gap: 6px; }
+#editor > div.group {
+	gap: 0;
+	padding: 0;
+	& > div { padding: 8px; }
+}
 #editor > div:has(.monospace) {
 	/* 2 * (padding: 8px; + border: 1px;) */
 	max-width: calc(100% - 18px);
@@ -107,17 +125,19 @@ span.gridSpan {
 	white-space: nowrap;
 }
 
-/* Smooth vertical alignment of checkbox labels */
-input[type="checkbox"] {
+/* Smooth out vertical alignment of checkbox labels */
+#editor input[type="checkbox"] {
 	& + span {
 		display: inline-flex;
+		padding-top: 2px;
 		white-space: pre;
 	}
 }
 
 /********* FORM CONTROLS *********/
 input,
-select {
+select,
+textarea {
 	color: #DDD;
 	background-color: #222;
 	border: 1px solid #DDD;
@@ -162,6 +182,8 @@ article div [type="checkbox"] { max-width: 15px; }
 input { padding-right: 0; }
 input:invalid { border: 1px solid red; }
 
+textarea { resize: vertical }
+
 #save.dirty {
 	color: #DDD;
 	background-color: #383;
@@ -175,12 +197,11 @@ span.header {
 		width: 100%;
 		height: 1lh;
 		background-color: rebeccapurple;
-		z-index: -1;
 	}
 	text-align: center;
 	background-color: rebeccapurple;
 	font-weight: bold;
-	white-space: pre;
+	z-index: 1;
 }
 span.subhead {
 	text-align: center;
@@ -194,6 +215,7 @@ span.right { justify-self: right !important; }
 span.disabled { color: #888; }
 span.warning { color: #B33; }
 span.good { color: #3B3; }
+span.tag { color: #3BB }
 
 span.button {
 	display: inline-grid;
@@ -205,7 +227,6 @@ span.button > div {
 	align-items: center;
 	position: absolute;
 	top: 20px;
-	z-index: 1000;
 	padding: 5px;
 	border: 1px solid #DDD;
 	color: #DDD;
@@ -255,6 +276,7 @@ span.button.left > div { left: 0; }
 
 #editor span:has(span.note) { display: inline-flex; }
 span.note { font-weight: normal; }
+span.note:not(.dynamic) { padding-left: 3px; }
 span.note.small { font-size: 0.8rem; }
 span.note.small > * { font-size: 1rem; }
 span.note > span { display: none; }
@@ -265,7 +287,6 @@ span.note:hover > span {
 	position: absolute;
 	top: 20px;
 	/*min-width: 200px;*/
-	z-index: 2000;
 	padding: 3px;
 	box-shadow: 0 0 5px 5px black;
 	color: #222;
@@ -273,6 +294,7 @@ span.note:hover > span {
 	white-space: nowrap;
 	font-size: 0.9rem;
 	font-weight: normal;
+	z-index: 1000;
 }
 /* Has been used in other editors based on this framework — needs re-evaluating when this code is re-integrated into an editor where it was used */
 /*
@@ -287,12 +309,12 @@ span.separator {
 	<body>
 		<header>
 			<span>
-				<label>Choose file: <input type=file id=inputFile accept=""></label>
+				<label>Choose file: <input type=file id=inputFile autocomplete=off accept=""></label>
 				<button type=button id=save disabled autocomplete=off>Save Changes</button>
 			</span>
-			<span id=log></span>
+			<span id=log> — Default Save Location: <span id=savedir></span></span>
 		</header>
-		<article>
+		<article spellcheck=false>
 			<div id=global>
 			</div>
 			<div id=page>
@@ -340,11 +362,18 @@ const modSubtract = 2;
 const modMultiply = 3;
 const modDivide = 4;
 
+// Tags for <select> arrays
+const isHeader = 0x1;
+const isDebug = 0x2;
+const isSpoiler = 0x4;
+const isBlankEntry = 0x8;
+
 // Store references to a few HTML elements
 var header = document.querySelector('header');
 var inputFile = document.querySelector('#inputFile');
 var save = document.querySelector('#save');
 var log = document.querySelector('#log'); // Used to test data validation fails during development
+var savedir = document.querySelector('#savedir');
 var global = document.querySelector('#global');
 var selector = document.querySelector('#selector');
 var editor = document.querySelector('#editor');
@@ -401,6 +430,14 @@ function handleDrag(e) { e.preventDefault(); }
 inputFile.addEventListener('change', loadFile, false);
 document.addEventListener('drop', loadFile, false);
 
+savedir.addEventListener('click', selectTarget, false);
+function selectTarget(e) {
+		let selection = window.getSelection();
+		let range = document.createRange();
+		range.selectNode(e.target)
+		selection.removeAllRanges();
+		selection.addRange(range);
+	}
 save.addEventListener('click', saveFile, false);
 
 global.addEventListener('click', changePage, true); // Capturing
@@ -448,7 +485,7 @@ function parseFile() {
 }
 
 function saveFile() {
-	// File() contructor takes an Interable Object (such as an Array) of ArrayBuffer (or similar) objects.
+	// File() contructor takes an Interable Object (such as an Array) with any mixture of ArrayBuffer (or similar) objects or strings.
 	let fileURL = URL.createObjectURL(new File([rawData], fileName, { type: "application/octet-stream",}));
 
 	// Should just be able to set: location = fileURL (otherwise there's little point to being able to set the fileName property in the File constructor)
@@ -693,7 +730,31 @@ function makeInput(parentNode, className, type, offset, dataType, callback, limi
 	return result;
 }
 
+function makeTextarea(parentNode, className, rows, offset, dataType, callback, limits, modifier, extraData, disabled) {
+	let result = document.createElement('textarea');
+	result.required = true;
+	if (className !== undefined) result.className = className;
+	result.rows = rows;
+	result.offset = offset;
+	result.dataType = dataType;
+	if (typeof callback === 'function') result._callback = callback;
+	if (Array.isArray(limits)) {
+		result.minLength = limits[0];
+		result.maxLength = limits[1];
+	}
+	if (Array.isArray(modifier)) {
+		result.modifyMode = modifier[0];
+		result.modifier = modifier[1];
+	}
+	if (extraData !== undefined) result.extraData = extraData;
+	if (disabled === true) result.disabled = true;
+	editorFields.push(result);
+	if (parentNode !== null) parentNode.appendChild(result);
+	return result;
+}
+
 function makeDiv(parentNode, className) {
+	if (parentNode === undefined) parentNode = null;
 	let result = document.createElement('div');
 	if (className !== undefined) result.className = className;
 	if (parentNode !== null) parentNode.appendChild(result);
@@ -720,38 +781,6 @@ function addSubPageButton(text, value) {
 	selector.appendChild(result);
 	selector.classList.add('active');
 	return result;
-}
-
-function buildSelectData(data) {
-	let i, j, element, entry;
-	let output = {};
-
-	output.dom = document.createDocumentFragment();
-	output.array = [];
-
-	j = 0;
-	for (i = 0; entry = data[i]; i++) {
-		if (entry[2] === 1) {
-			element = document.createElement('optgroup');
-			element.label = entry[0];
-			output.dom.appendChild(element);
-		}
-		else if (debug || entry[2] !== 2) {
-			element = document.createElement('option');
-			if (typeof entry[1] === 'number') {
-				element.innerHTML = ((debug)?padString(Number(entry[1]).toString(16).toUpperCase(),'00') + ': ':'') + entry[0] + ((typeof entry[2] === 'string')?' [' + entry[2] + ']':'');
-			} else {
-				element.innerHTML = ((debug)?entry[1] + ': ':'') + entry[0] + ((typeof entry[2] === 'string')?' [' + entry[2] + ']':'');
-			}
-			element.value = entry[1];
-			if (output.dom.lastChild &&
-				output.dom.lastChild.tagName.match(/optgroup/i)) output.dom.lastChild.appendChild(element);
-			else                                                 output.dom.appendChild(element);
-			output.array[entry[1]] = j;
-			j++;
-		}
-	}
-	return output;
 }
 
 function displayDataBlock(start, blocks, selectedBlock) {
@@ -940,7 +969,7 @@ function saveValue(target) {
 		setFileDirty(true);
 		// Empty strings are not considered invalid
 		// Check for .value too.
-		if (target.offset && target.dataType && target.value) {
+		if ((target.offset !== undefined) && (target.dataType !== undefined) && (!target.required || target.value)) {
 			if ((target._callback) && (target.dataType != custom)) target._callback(callbackBeforeSave, target);
 
 			// Does not currently support 64 bit values due to having to use BigInt
@@ -1042,21 +1071,54 @@ function debugStringBuffer(start, length, spacer, warnings, toString) {
 	return output.trimEnd()
 }
 
-function loadData(gameType) {
-	function prepareStringIndexedArray(stringArray, sourceData) {
-		let indexCount = 0;
-		stringArray.select = buildSelectData(sourceData);
-		stringArray.id = new Map();
-		stringArray.name = []
-		for (let entry of sourceData) {
-			// Exclude header entries;
-			if (entry[2] != 1) {
-				stringArray.id.set(entry[1], indexCount)
-				stringArray.name.push(entry)
-				indexCount++;
+function buildSelectData(data) {
+	let i, j, element, entry;
+	let output = {};
+
+	output.dom = document.createDocumentFragment();
+	output.array = [];
+
+	j = 0;
+	for (i = 0; entry = data[i]; i++) {
+		if ((entry[2] & isHeader) > 0) {
+			element = document.createElement('optgroup');
+			element.label = entry[0];
+			output.dom.appendChild(element);
+		}
+		else if (debug || ((entry[2] & isDebug) === 0)) {
+			element = document.createElement('option');
+			if (typeof entry[1] === 'number') {
+				element.innerHTML = ((debug)?padString(Number(entry[1]).toString(16).toUpperCase(),'00') + ': ':'') + entry[0] + ((typeof entry[2] === 'string')?' [' + entry[2] + ']':'');
+			} else {
+				element.innerHTML = ((debug)?entry[1] + ': ':'') + entry[0] + ((typeof entry[2] === 'string')?' [' + entry[2] + ']':'');
 			}
+			element.value = entry[1];
+			if (entry[2]) element.setAttribute('data-extra-data', entry[2]);
+			if (output.dom.lastChild &&
+				output.dom.lastChild.tagName.match(/optgroup/i)) output.dom.lastChild.appendChild(element);
+			else                                                 output.dom.appendChild(element);
+			output.array[entry[1]] = j;
+			j++;
 		}
 	}
+	return output;
+}
+
+function prepareStringIndexedArray(stringArray, sourceData) {
+	let indexCount = 0;
+	stringArray.select = buildSelectData(sourceData);
+	stringArray.id = new Map();
+	stringArray.name = []
+	for (let entry of sourceData) {
+		if ((entry[2] & isHeader) === 0) { // Exclude header entries;
+			stringArray.id.set(entry[1], indexCount)
+			stringArray.name.push(entry)
+			indexCount++;
+		}
+	}
+}
+
+function loadData() {
 
 	// This can be a good place to insert defaultPage() and sub page overrides while testing
 }
