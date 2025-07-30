@@ -900,8 +900,14 @@ function createUI() {
 		makeSpan(baseElement, '', 'Unlock Omnikit');
 	// These can generate weird side effects that might be difficult to unpick without a *lot* more research into the save
 	// And it doesn't take that long in gameplay to unlock them anyway
-	//makeCheckbox(pending, '', featuresOffset, bitmask, null, 8); makeSpan(pending, '', 'Paradigms');
-	//makeCheckbox(pending, '', featuresOffset, bitmask, null, 10); makeSpan(pending, '', 'Crystarium');
+	if (debug) {
+		baseElement = makeSpan(pending, 'group tight-spacing', '');
+			makeCheckbox(baseElement, '', featuresOffset, bitmask, null, 10);
+			makeSpan(baseElement, '', 'Unlock Crystarium');
+		baseElement = makeSpan(pending, 'group tight-spacing', '');
+			makeCheckbox(baseElement, '', featuresOffset, bitmask, null, 8);
+			makeSpan(baseElement, '', 'Unlock Paradigms');
+	}
 	global.appendChild(pending);
 
 	switch (selectedPage) {
@@ -912,9 +918,9 @@ function createUI() {
 		pending = makeDiv(null, 'group');
 		baseElement = makeDiv(pending, 'gridOne');
 			makeSpan(baseElement, 'header', 'Current Party');
-			makeSelect(baseElement, 'largeValue', selectData, baseOffset + (6*4), arrayIndexed16, setPartyLeader)
-			makeSelect(baseElement, 'largeValue', selectData, baseOffset + (7*4), arrayIndexed16, updateAllParadigms)
-			makeSelect(baseElement, 'largeValue', selectData, baseOffset + (8*4), arrayIndexed16, updateAllParadigms)
+			makeSelect(baseElement, 'largeValue', selectData, baseOffset + (6*4), arrayIndexed16, setPartyLeader);
+			makeSelect(baseElement, 'largeValue', selectData, baseOffset + (7*4), arrayIndexed16, updateAllParadigms);
+			makeSelect(baseElement, 'largeValue', selectData, baseOffset + (8*4), arrayIndexed16, updateAllParadigms);
 
 		baseElement = makeDiv(pending, 'gridOne');
 			makeSpan(baseElement, 'header', 'Party Members');
@@ -944,18 +950,28 @@ function createUI() {
 			pending = makeDiv(null);
 			baseOffset = characterOffsets[i];
 			makeSpan(pending, 'header gridSpan', characters.name[i])
-			makeSpan(pending, 'colRight', 'CP'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterCP, uint32, null, [0, 999999])
-			makeSpan(pending, 'colRight', 'HP'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterHP, uint32, null, [0, 999999])
-			makeSpan(pending, 'colRight', 'Strength'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterStrength, uint32, null, [0, 999999])
-			makeSpan(pending, 'colRight', 'Magic'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterMagic, uint32, null, [0, 999999])
-			makeSpan(pending, 'colRight', 'ATB Segments'); makeInput(pending, 'smallValue', 'number', baseOffset + characterATB, uint32, null, [2, 6], [modDivide, 10])
-			makeSpan(pending, 'colRight', 'Accessory Slots'); makeInput(pending, 'smallValue', 'number', baseOffset + characterAccessorySlots, uint8, null, [1, 4])
+			makeSpan(pending, 'colRight', 'CP'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterCP, uint32, null, [0, 999999]);
+			makeSpan(pending, 'colRight', 'HP'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterHP, uint32, null, [0, 999999]);
+			makeSpan(pending, 'colRight', 'Strength'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterStrength, uint32, null, [0, 999999]);
+			makeSpan(pending, 'colRight', 'Magic'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterMagic, uint32, null, [0, 999999]);
+			makeSpan(pending, 'colRight', 'ATB Segments'); makeInput(pending, 'smallValue', 'number', baseOffset + characterATB, uint32, null, [2, 6], [modDivide, 10]);
+			makeSpan(pending, 'colRight', 'Accessory Slots'); makeInput(pending, 'smallValue', 'number', baseOffset + characterAccessorySlots, uint8, null, [1, 4]);
 			if (debug) {
 				makeSpan(pending, 'colRight', 'ID'); makeInput(pending, 'mediumValue', 'text', baseOffset + characterID, text, null, [0, 16], null, [16, idPadding])
 				makeSpan(pending, 'colRight', 'Total CP Earned'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterCPEarned, uint32, null, [0, 9999999])
-				makeSpan(pending, 'colRight', 'Unknown 1'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterUnknown1, uint32, null, [0, 9999999])
-				makeSpan(pending, 'colRight', 'Unknown 2'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterUnknown2, uint32, null, [0, 9999999])
-				makeSpan(pending, 'colRight', 'Unknown 3'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterUnknown3, uint32, null, [0, 9999999])
+				makeSpan(makeSpan(makeSpan(pending, 'header gridSpan', 'Early Unlocks'), 'note small', '[?]'), '', 'Certain roles may still be locked in very early game');
+				makeSpan(pending, 'colRight', 'Sentinel Level'); makeInput(pending, 'smallValue', 'number', baseOffset + 0xC28, uint32, null, [0, 5]);
+				makeSpan(pending, 'colRight', 'Commando Level'); makeInput(pending, 'smallValue', 'number', baseOffset + 0xC28+4, uint32, null, [0, 5]);
+				makeSpan(pending, 'colRight', 'Ravager Level'); makeInput(pending, 'smallValue', 'number', baseOffset + 0xC28+8, uint32, null, [0, 5]);
+				makeSpan(pending, 'colRight', 'Synergist Level'); makeInput(pending, 'smallValue', 'number', baseOffset + 0xC28+12, uint32, null, [0, 5]);
+				makeSpan(pending, 'colRight', 'Saboteur Level'); makeInput(pending, 'smallValue', 'number', baseOffset + 0xC28+16, uint32, null, [0, 5]);
+				makeSpan(pending, 'colRight', 'Medic Level'); makeInput(pending, 'smallValue', 'number', baseOffset + 0xC28+20, uint32, null, [0, 5]);
+				makeSpan(pending, 'colRight', 'Crystarium: Sentinel'); makeCheckbox(pending, '', baseOffset + 0x24, bitmask, null, 0);
+				makeSpan(pending, 'colRight', 'Crystarium: Commando'); makeCheckbox(pending, '', baseOffset + 0x24, bitmask, null, 1);
+				makeSpan(pending, 'colRight', 'Crystarium: Ravager'); makeCheckbox(pending, '', baseOffset + 0x24, bitmask, null, 2);
+				makeSpan(pending, 'colRight', 'Crystarium: Synergist'); makeCheckbox(pending, '', baseOffset + 0x24, bitmask, null, 3);
+				makeSpan(pending, 'colRight', 'Crystarium: Saboteur'); makeCheckbox(pending, '', baseOffset + 0x24, bitmask, null, 4);
+				makeSpan(pending, 'colRight', 'Crystarium: Medic'); makeCheckbox(pending, '', baseOffset + 0x24, bitmask, null, 5);
 			}
 			editor.appendChild(pending);
 		}
