@@ -34,7 +34,7 @@ This editor uses code derived from https://github.com/Surihix/WhiteCryptTool to 
 * Edit party status including level, exp, and equipped items.  
 * Full inventory editing.  
 * Attempts to avoid spoilers by default.  
-* Includes an advanced mode (with no spoiler protection) that displays all values in the save in a raw format. You can also edit the games settings file in this mode.
+* Includes an advanced mode (with no spoiler protection) that displays all values in the save in a raw format. You can also edit the game's settings file in this mode.
 
 ## Shenmue I & Shenmue II HD
 ### [Download – Shenmue I (right-click --> Save link as…)](https://raw.githubusercontent.com/BtEtta/save-editors/refs/heads/main/shenmue-hd/shenmue.html)

@@ -317,7 +317,7 @@ span.separator {
 				<label>Choose file: <input type=file id=inputFile autocomplete=off accept=""></label>
 				<button type=button id=save disabled autocomplete=off>Save Changes</button>
 			</span>
-			<span id=log>Ikenfell Save Editor — Default Save Location: <span id=savedir>%APPDATA%\ikenfell\<span></span>
+			<span id=log>Ikenfell Save Editor — Default Save Location: <span id=savedir>%APPDATA%\ikenfell\</span></span>
 		</header>
 		<article spellcheck=false>
 			<div id=global>
@@ -520,9 +520,14 @@ function parseFile() {
 			addHint(i);
 			checkKey(data[i][0], i);
 		}
-		if (getKey(maritte, partyLevel) === -1) defaultPage(pageAdvanced);
-		else setPageButtonsDisabled(false);
-		getPartyMembers();
+		if (getKey(maritte, partyLevel) === -1) {
+			defaultPage(pageAdvanced);
+			save.disabled = false;
+		}
+		else {
+			setPageButtonsDisabled(false);
+			getPartyMembers();
+		}
 		setFileDirty(false);
 		createUI();
 	}
@@ -601,14 +606,16 @@ function abilityRechargeDetail(key, position) {
 function getPartyMembers() {
 	let partyValue = getValue(getKey(partyMembers));
 	party = [];
-	for (let member of partyValue.split(',')) {
-		switch(member) {
-		case 'Maritte': party.push(maritte); break;
-		case 'Petronella': party.push(petronella); break;
-		case 'Rook': party.push(rook); break;
-		case 'Pertisia': party.push(pertisia); break;
-		case 'Ima': party.push(ima); break;
-		case 'Gilda': party.push(gilda); break;
+	if (partyValue) {
+		for (let member of partyValue.split(',')) {
+			switch(member) {
+			case 'Maritte': party.push(maritte); break;
+			case 'Petronella': party.push(petronella); break;
+			case 'Rook': party.push(rook); break;
+			case 'Pertisia': party.push(pertisia); break;
+			case 'Ima': party.push(ima); break;
+			case 'Gilda': party.push(gilda); break;
+			}
 		}
 	}
 }
