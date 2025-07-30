@@ -199,6 +199,7 @@ span.header {
 		background-color: rebeccapurple;
 	}
 	text-align: center;
+	justify-content: center;
 	background-color: rebeccapurple;
 	font-weight: bold;
 	z-index: 1;
@@ -482,6 +483,8 @@ if (debug) characterOffsets = [
 ]
 
 var characterID = 0x05;
+var characterCrystariums = 0x24;
+var characterLevels = 0xC28;
 var characterAccessorySlots = 0xC40;
 var characterCP = 0xC41;
 var characterCPEarned = 0xC45;
@@ -960,18 +963,18 @@ function createUI() {
 				makeSpan(pending, 'colRight', 'ID'); makeInput(pending, 'mediumValue', 'text', baseOffset + characterID, text, null, [0, 16], null, [16, idPadding])
 				makeSpan(pending, 'colRight', 'Total CP Earned'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterCPEarned, uint32, null, [0, 9999999])
 				makeSpan(makeSpan(makeSpan(pending, 'header gridSpan', 'Early Unlocks'), 'note small', '[?]'), '', 'Certain roles may still be locked in very early game');
-				makeSpan(pending, 'colRight', 'Sentinel Level'); makeInput(pending, 'smallValue', 'number', baseOffset + 0xC28, uint32, null, [0, 5]);
-				makeSpan(pending, 'colRight', 'Commando Level'); makeInput(pending, 'smallValue', 'number', baseOffset + 0xC28+4, uint32, null, [0, 5]);
-				makeSpan(pending, 'colRight', 'Ravager Level'); makeInput(pending, 'smallValue', 'number', baseOffset + 0xC28+8, uint32, null, [0, 5]);
-				makeSpan(pending, 'colRight', 'Synergist Level'); makeInput(pending, 'smallValue', 'number', baseOffset + 0xC28+12, uint32, null, [0, 5]);
-				makeSpan(pending, 'colRight', 'Saboteur Level'); makeInput(pending, 'smallValue', 'number', baseOffset + 0xC28+16, uint32, null, [0, 5]);
-				makeSpan(pending, 'colRight', 'Medic Level'); makeInput(pending, 'smallValue', 'number', baseOffset + 0xC28+20, uint32, null, [0, 5]);
-				makeSpan(pending, 'colRight', 'Crystarium: Sentinel'); makeCheckbox(pending, '', baseOffset + 0x24, bitmask, null, 0);
-				makeSpan(pending, 'colRight', 'Crystarium: Commando'); makeCheckbox(pending, '', baseOffset + 0x24, bitmask, null, 1);
-				makeSpan(pending, 'colRight', 'Crystarium: Ravager'); makeCheckbox(pending, '', baseOffset + 0x24, bitmask, null, 2);
-				makeSpan(pending, 'colRight', 'Crystarium: Synergist'); makeCheckbox(pending, '', baseOffset + 0x24, bitmask, null, 3);
-				makeSpan(pending, 'colRight', 'Crystarium: Saboteur'); makeCheckbox(pending, '', baseOffset + 0x24, bitmask, null, 4);
-				makeSpan(pending, 'colRight', 'Crystarium: Medic'); makeCheckbox(pending, '', baseOffset + 0x24, bitmask, null, 5);
+				makeSpan(pending, 'colRight', 'Crystarium: Commando'); makeCheckbox(pending, '', baseOffset + characterCrystariums, bitmask, null, 1);
+				makeSpan(pending, 'colRight', 'Commando Level'); makeInput(pending, 'smallValue', 'number', baseOffset + characterLevels+4, uint32, null, [0, 5]);
+				makeSpan(pending, 'colRight', 'Crystarium: Ravager'); makeCheckbox(pending, '', baseOffset + characterCrystariums, bitmask, null, 2);
+				makeSpan(pending, 'colRight', 'Ravager Level'); makeInput(pending, 'smallValue', 'number', baseOffset + characterLevels+8, uint32, null, [0, 5]);
+				makeSpan(pending, 'colRight', 'Crystarium: Sentinel'); makeCheckbox(pending, '', baseOffset + characterCrystariums, bitmask, null, 0);
+				makeSpan(pending, 'colRight', 'Sentinel Level'); makeInput(pending, 'smallValue', 'number', baseOffset + characterLevels, uint32, null, [0, 5]);
+				makeSpan(pending, 'colRight', 'Crystarium: Saboteur'); makeCheckbox(pending, '', baseOffset + characterCrystariums, bitmask, null, 4);
+				makeSpan(pending, 'colRight', 'Saboteur Level'); makeInput(pending, 'smallValue', 'number', baseOffset + characterLevels+16, uint32, null, [0, 5]);
+				makeSpan(pending, 'colRight', 'Crystarium: Synergist'); makeCheckbox(pending, '', baseOffset + characterCrystariums, bitmask, null, 3);
+				makeSpan(pending, 'colRight', 'Synergist Level'); makeInput(pending, 'smallValue', 'number', baseOffset + characterLevels+12, uint32, null, [0, 5]);
+				makeSpan(pending, 'colRight', 'Crystarium: Medic'); makeCheckbox(pending, '', baseOffset + characterCrystariums, bitmask, null, 5);
+				makeSpan(pending, 'colRight', 'Medic Level'); makeInput(pending, 'smallValue', 'number', baseOffset + characterLevels+20, uint32, null, [0, 5]);
 			}
 			editor.appendChild(pending);
 		}
