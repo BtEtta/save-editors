@@ -488,11 +488,8 @@ var characterLevels = 0xC28;
 var characterAccessorySlots = 0xC40;
 var characterCP = 0xC41;
 var characterCPEarned = 0xC45;
-var characterUnknown1 = 0xC49;
 var characterHP = 0xC4D;
-var characterUnknown2 = 0xC51;
 var characterATB = 0xC55;
-var characterUnknown3 = 0xC59;
 var characterStrength = 0xC5D;
 var characterMagic = 0xC61;
 
@@ -962,7 +959,7 @@ function createUI() {
 			if (debug) {
 				makeSpan(pending, 'colRight', 'ID'); makeInput(pending, 'mediumValue', 'text', baseOffset + characterID, text, null, [0, 16], null, [16, idPadding])
 				makeSpan(pending, 'colRight', 'Total CP Earned'); makeInput(pending, 'mediumValue', 'number', baseOffset + characterCPEarned, uint32, null, [0, 9999999])
-				makeSpan(makeSpan(makeSpan(pending, 'header gridSpan', 'Early Unlocks'), 'note small', '[?]'), '', 'Certain roles may still be locked in very early game');
+				makeSpan(makeSpan(makeSpan(pending, 'header gridSpan', 'Early Unlocks'), 'note small', '[?]'), '', 'Certain roles are locked behind Crystarium stage 2/stage 3');
 				makeSpan(pending, 'colRight', 'Crystarium: Commando'); makeCheckbox(pending, '', baseOffset + characterCrystariums, bitmask, null, 1);
 				makeSpan(pending, 'colRight', 'Commando Level'); makeInput(pending, 'smallValue', 'number', baseOffset + characterLevels+4, uint32, null, [0, 5]);
 				makeSpan(pending, 'colRight', 'Crystarium: Ravager'); makeCheckbox(pending, '', baseOffset + characterCrystariums, bitmask, null, 2);
