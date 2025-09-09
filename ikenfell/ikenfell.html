@@ -826,13 +826,13 @@ function createUI() {
 				for (j = 0; j < (weapon[i].name.length - 1); j++) {
 					if ((weapon[i].name[j][2] & isBlankEntry) === 0) {
 						makeSpan(makeSpan(baseElement, 'colRight note', weapon[i].name[j][0]),'', weapon[i].name[j][3]);
-						makeInput(baseElement, 'smallValue', 'number', getKey(inventoryItems), custom, updateInventory, [0,99], null, [weapon[i].name[j]]);
+						makeInput(baseElement, 'smallValue', 'number', getKey(inventoryItems), custom, updateInventory, [0,9999], null, [weapon[i].name[j]]);
 					}
 				}
 				if ((i === gilda) && (spoilers || (getInventoryQuantity(weapon[i].name[j][1]) > 0))) { // Only spoiler weapon is Kitty Wand
 					makeSpan(baseElement, 'header gridSpan', 'Weapons: All');
 					makeSpan(makeSpan(baseElement, 'colRight note', weapon[i].name[j][0]),'', weapon[i].name[j][3]);
-					makeInput(baseElement, 'smallValue', 'number', getKey(inventoryItems), custom, updateInventory, [0,99], null, [weapon[i].name[j]]);
+					makeInput(baseElement, 'smallValue', 'number', getKey(inventoryItems), custom, updateInventory, [0,9999], null, [weapon[i].name[j]]);
 				}
 			}
 		}
@@ -894,7 +894,7 @@ function createUI() {
 				(spoilers || ((data[i][2] & isSpoiler) === 0) || (getInventoryQuantity(data[i][1]) > 0))) {
 				wrapCounter++
 				makeSpan(makeSpan(baseElement, 'colRight note', data[i][0]),'', data[i][3]);
-				makeInput(baseElement, 'smallValue', 'number', getKey(inventoryItems), custom, updateInventory, [0,99], null, [data[i]]);
+				makeInput(baseElement, 'smallValue', 'number', getKey(inventoryItems), custom, updateInventory, [0,9999], null, [data[i]]);
 			}
 		}
 	}
